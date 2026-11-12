@@ -1104,7 +1104,7 @@ async function showComponentMenu(e, r, c) { // Adicionamos async aqui
         setInsertMode('giro', 'cell');
         await insertFromActiveMode(r, c);
       } else {
-        if (c === 0 && (selectedType === 'maxim-ar' || selectedType === 'veneziana')) {
+        if (c === 0 && (selectedType === 'maxim-ar' || selectedType === 'veneziana' || selectedType === 'acm')) {
           showPlacementScopeMenu(event, selectedType, r, c);
         } else {
           menuPopup.style.display = "none";
@@ -1451,7 +1451,7 @@ function initializeSidebarComponents() {
   components.forEach(component => {
     component.addEventListener("click", (e) => {
       const type = component.dataset.type;
-      if (type === 'maxim-ar' || type === 'veneziana') {
+      if (type === 'maxim-ar' || type === 'veneziana' || type === 'acm') {
         showInsertModeMenu(e, type);
       } else {
         setInsertMode(type, 'cell');

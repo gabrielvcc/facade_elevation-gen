@@ -16,6 +16,7 @@
 3. **Componente ACM**
    - Adicionado componente que preenche o quadro com cinza claro para representar uma chapa de ACM.
    - Disponível na barra lateral e no menu `+` de cada quadro, com inserção individual e opção de exclusão.
+   - Também permite preencher uma linha inteira pela barra lateral ou pelo menu `+` da coluna A, mantendo os quadros já ocupados.
    - O preenchimento aparece no editor e no PNG, preservando as linhas pretas que delimitam o quadro.
 
 ## Ajustes
