@@ -58,10 +58,14 @@
   <div id="main-container">
     <div id="sidebar">
     <h3>Componentes</h3>
-    <div id="insert-mode-status" aria-live="polite"></div>
+    <div id="component-list">
     <div class="component" data-type="maxim-ar"  data-tooltip="Maxim-ar"></div>
     <div class="component" data-type="veneziana" data-tooltip="Veneziana"></div>
     <div class="component" data-type="giro"      data-tooltip="Porta de Giro"></div> 
+    <button type="button" id="corner-mode-btn" class="component" data-tooltip="Canto" aria-label="Canto" aria-pressed="false"></button>
+    <button type="button" id="infinity-mode-btn" class="component" data-tooltip="Infinidade" aria-label="Infinidade" aria-pressed="false"></button>
+    <button type="button" class="component" data-type="acm" data-tooltip="ACM" aria-label="ACM"></button>
+    </div>
 </div>
     <div id="content-area">
       <div id="canvas-container">
@@ -77,8 +81,41 @@
           </div>
         </div>
       </div>
+      <div id="edit-mode-notices">
+        <div id="giro-options-modal-overlay" style="display: none;">
+          <div id="giro-options-modal-content" role="dialog" aria-labelledby="giro-options-title">
+            <h3 id="giro-options-title">Porta de Giro</h3>
+            <div class="giro-option-group">
+              <label>Altura da Porta</label>
+              <div class="giro-option-buttons">
+                <button type="button" class="giro-option-btn" data-size="1">1 módulo</button>
+                <button type="button" class="giro-option-btn" data-size="2">2 módulos</button>
+              </div>
+            </div>
+            <div class="giro-option-group">
+              <label>Direção de Abertura</label>
+              <div class="giro-option-buttons">
+                <button type="button" class="giro-option-btn" data-direction="esquerda">Esquerda</button>
+                <button type="button" class="giro-option-btn" data-direction="direita">Direita</button>
+              </div>
+            </div>
+            <div class="giro-option-group" id="giro-transom-option">
+              <label>Travessa</label>
+              <div class="giro-option-buttons">
+                <button type="button" class="giro-option-btn" data-transom="true">Com travessa</button>
+                <button type="button" class="giro-option-btn" data-transom="false">Sem travessa</button>
+              </div>
+            </div>
+            <div class="edit-mode-actions">
+              <button type="button" id="giro-options-confirm-btn" class="edit-mode-confirm" aria-label="Confirmar porta" title="Confirmar porta">&#10003;</button>
+              <button type="button" id="giro-options-cancel-btn" class="edit-mode-cancel" aria-label="Cancelar porta" title="Cancelar porta">&times;</button>
+            </div>
+          </div>
+        </div>
+        <div id="insert-mode-status" role="status" aria-live="polite"></div>
+      </div>
       <div id="bottom-bar">
-        <p>developed by <a href="https://github.com/gabrielvcc" target="_blank">gabrielvc</a> | <a href="/atualizacoes" id="version-link">v1.0.5</a></p>
+        <p>developed by <a href="https://github.com/gabrielvcc" target="_blank">gabrielvc</a> | <a href="/atualizacoes" id="version-link">v1.1.0</a></p>
       </div>
     </div>
   </div>
@@ -117,40 +154,6 @@
         <button id="custom-modal-cancel-btn">Cancelar</button>
         <button id="custom-modal-confirm-btn">Confirmar</button>
       </div>
-    </div>
-  </div>
-  <div id="giro-options-modal-overlay" style="display: none;">
-    <div id="giro-options-modal-content">
-        <h3>Opções da Porta de Giro</h3>
-
-        <div class="giro-option-group">
-            <label>Altura da Porta</label>
-            <div class="giro-option-buttons">
-                <button class="giro-option-btn" data-size="1">Simples - 1 módulo</button>
-                <button class="giro-option-btn" data-size="2">Dupla - 2 módulos</button>
-            </div>
-        </div>
-
-        <div class="giro-option-group">
-            <label>Direção de Abertura</label>
-            <div class="giro-option-buttons">
-                <button class="giro-option-btn" data-direction="esquerda">Esquerda</button>
-                <button class="giro-option-btn" data-direction="direita">Direita</button>
-            </div>
-        </div>
-
-        <div class="giro-option-group" id="giro-transom-option">
-            <label>Travessa</label> 
-          <div class="giro-option-buttons">
-            <button class="giro-option-btn" data-transom="true">Com Travessa</button>
-            <button class="giro-option-btn" data-transom="false">Sem Travessa</button>
-          </div>
-        </div>
-
-        <div class="custom-modal-actions">
-            <button id="giro-options-cancel-btn">Cancelar</button>
-            <button id="giro-options-confirm-btn">Confirmar</button>
-        </div>
     </div>
   </div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>

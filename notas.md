@@ -1,3 +1,50 @@
+# Notas de Atualização da Versão 1.1.0 - 12/11/2026
+
+## Novas Funcionalidades
+1. **Canto**
+   - Adicionado modo para marcar cantos nos montantes internos, entre as colunas, sem ocupar um quadro.
+   - É possível adicionar ou remover vários cantos na mesma edição para representar fachadas com mudanças de direção.
+   - Os cantos aparecem no desenho com o montante destacado e são exportados com a indicação `CANTO` e um marcador em V.
+
+2. **Infinidade nas laterais da fachada**
+   - Adicionado modo para representar a continuidade da fachada nas extremidades esquerda e direita.
+   - Ao selecionar um quadro de uma das colunas extremas, o corte é aplicado em toda a altura da fachada.
+   - A barra diagonal corta visualmente os módulos e o contorno externo, ocultando o trecho que ultrapassa o corte sem excluir os componentes do projeto.
+   - O corte também alcança a cota horizontal `L`, tanto na apresentação quanto nas cotas detalhadas.
+   - É possível adicionar ou remover as marcações durante a edição.
+
+3. **Componente ACM**
+   - Adicionado componente que preenche o quadro com cinza claro para representar uma chapa de ACM.
+   - Disponível na barra lateral e no menu `+` de cada quadro, com inserção individual e opção de exclusão.
+   - O preenchimento aparece no editor e no PNG, preservando as linhas pretas que delimitam o quadro.
+
+## Ajustes
+1. **Foco visual no modo de edição**
+   - O restante da interface fica desfocado durante a inserção, mantendo nítidos o componente selecionado, o grid e seus rótulos de linhas e colunas.
+   - O aviso de inserção saiu do topo da barra lateral e passou para o canto inferior esquerdo da área do desenho, sem deslocar os componentes.
+   - O cancelamento usa um botão circular vermelho com X; Canto e Infinidade também possuem um botão circular verde para finalizar.
+   - Nesses dois modos, finalizar mantém as alterações, enquanto cancelar ou pressionar `Esc` restaura as marcações anteriores à sessão de edição.
+
+2. **Configuração da Porta de Giro**
+   - O modal central foi substituído por um balão compacto acima do aviso de inserção, seguindo o mesmo padrão visual.
+   - Mantidas as opções de um ou dois módulos, abertura à esquerda ou à direita e configuração com ou sem travessa.
+   - Mantida a restrição de dois módulos quando não existe um quadro livre acima.
+   - Os caminhos pela barra lateral e pelo menu `+` usam o mesmo fluxo de configuração e confirmação.
+   - Enquanto as opções estão abertas, novos cliques de inserção no grid ficam bloqueados e o X do aviso inferior fica oculto para evitar dois botões de cancelar.
+
+3. **Rolagem da lista de componentes**
+   - Adicionada rolagem independente na barra lateral, mantendo o título `Componentes` fixo.
+   - Os ícones mantêm seu tamanho, sem encolher para caber na tela.
+   - As descrições ao passar o mouse foram posicionadas dentro dos botões para não serem cortadas pela área de rolagem.
+
+4. **Ícones e marcações**
+   - O ícone do Canto usa a indicação `CANTO` sobre um V pequeno, dentro do mesmo botão pontilhado dos demais componentes.
+   - O ícone da Infinidade passou a usar um símbolo de infinito com curvas suaves, levemente quadrado e em tamanho reduzido.
+   - A diagonal de infinidade usa o laranja do aplicativo e foi reposicionada mais para dentro do módulo, com os lados esquerdo e direito espelhados.
+   - Ajustado o afastamento do marcador de canto no PNG para não sobrepor o contorno externo da fachada nem ficar excessivamente distante dele.
+
+---
+
 # Notas de Atualização da Versão 1.0.5 - 31/07/2026
 
 ## Novas Funcionalidades

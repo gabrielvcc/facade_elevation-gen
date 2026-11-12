@@ -19,6 +19,8 @@ const modalDownloadBtn = document.getElementById("modal-download-btn");
 const moduleSizePresetInput = document.getElementById("module-size-preset");
 const exportModeSelect = document.getElementById("export-mode");
 const insertModeStatus = document.getElementById("insert-mode-status");
+const cornerModeBtn = document.getElementById("corner-mode-btn");
+const infinityModeBtn = document.getElementById("infinity-mode-btn");
 
 // --- ESTADO DA APLICAÇÃO ---
 const borderWidth = 2;
@@ -31,6 +33,13 @@ let columnWidths = [];
 let rowHeights = [];
 let gridState = [];
 let activeInsertMode = null;
+let cornerBoundaries = new Set();
+let cornerModeActive = false;
+let infinityModeActive = false;
+let infinityMarkers = { left: false, right: false };
+let cornerEditSnapshot = null;
+let infinityEditSnapshot = null;
+let activeGiroCancel = null;
 
 // --- FUNÇÕES DE LÓGICA DO GRID ---
 function getX(col) { return columnWidths.slice(0, col).reduce((a, b) => a + b, 0); }
@@ -45,6 +54,8 @@ function resetGridState(newRows, newCols) {
   colsInput.value = newCols;
   rowsInput.value = newRows;
   gridState = Array(numRows).fill(null).map(() => Array(numCols).fill(null));
+  cornerBoundaries.clear();
+  infinityMarkers = { left: false, right: false };
   columnWidths = Array(numCols).fill(cmToGridSize(defaultModuleSizeCm));
   rowHeights = Array(numRows).fill(cmToGridSize(defaultModuleSizeCm));
   updateGrid();
@@ -91,6 +102,7 @@ function rebuildOccupiedCells() {
 
 function insertColumnAt(index) {
   const columnIndex = Math.max(0, Math.min(index, numCols));
+  cornerBoundaries = new Set([...cornerBoundaries].map((boundary) => boundary >= columnIndex ? boundary + 1 : boundary));
   gridState.forEach((row) => row.splice(columnIndex, 0, null));
   columnWidths.splice(columnIndex, 0, cmToGridSize(defaultModuleSizeCm));
   numCols++;
@@ -145,6 +157,10 @@ async function deleteColumnAt(index) {
   });
 
   if (!confirmed) return;
+
+  cornerBoundaries = new Set([...cornerBoundaries]
+    .filter((boundary) => boundary !== index && boundary !== index + 1)
+    .map((boundary) => boundary > index + 1 ? boundary - 1 : boundary));
 
   for (let r = 0; r < numRows; r++) {
     clearCellComponentAt(r, index);
@@ -220,6 +236,8 @@ function redrawAll() {
       }
     }
   }
+  renderInfinitySelectionTargets(containerWidth, containerHeight);
+  renderInfinityMarkers(containerWidth, containerHeight);
   updateCroquiPosition();
 }
 
@@ -287,7 +305,6 @@ function showCustomModal(options) {
   });
 }
 
-// --- NOVA FUNÇÃO PARA O MENU DE OPÇÕES DE GIRO ---
 function showGiroOptionsMenu(r, c) {
   const modal = document.getElementById('giro-options-modal-overlay');
   const size1Btn = document.querySelector('[data-size="1"]');
@@ -358,6 +375,8 @@ function showGiroOptionsMenu(r, c) {
 
     function closeModal() {
       modal.style.display = 'none';
+      document.body.classList.remove('giro-options-open');
+      activeGiroCancel = null;
       // Limpa os event listeners para evitar memory leaks
       size1Btn.removeEventListener('click', onSizeClick);
       size2Btn.removeEventListener('click', onSizeClick);
@@ -381,7 +400,10 @@ function showGiroOptionsMenu(r, c) {
     
     // 5. Roda o setup inicial e mostra o modal
     setup();
+    activeGiroCancel = onCancel;
+    document.body.classList.add('giro-options-open');
     modal.style.display = 'flex';
+    size1Btn.focus();
   });
 }
 
@@ -554,9 +576,76 @@ function generateLines(totalWidth, totalHeight) {
     const line = document.createElement("div");
     line.className = "line v-line";
     line.style.left = `${x}px`;
+    if (cornerBoundaries.has(c)) line.classList.add("corner-boundary");
+    if (cornerModeActive && c > 0 && c < numCols) {
+      line.classList.add("corner-target");
+      line.title = `Marcar canto entre ${String.fromCharCode(64 + c)} e ${String.fromCharCode(65 + c)}`;
+      line.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (cornerBoundaries.has(c)) cornerBoundaries.delete(c);
+        else cornerBoundaries.add(c);
+        redrawAll();
+      });
+    }
     grid.appendChild(line);
     x += columnWidths[c] || 0;
   }
+}
+
+function renderInfinityMarkers(width, height) {
+  const paths = [];
+  const fillPaths = [];
+  if (infinityMarkers.right) {
+    const xBottom = width - 72;
+    const xTop = width - 8;
+    fillPaths.push(`M ${xTop} 0 L ${width} 0 L ${width} ${height} L ${xBottom} ${height} Z`);
+    paths.push(`M ${xBottom} ${height + 28} L ${xTop} -16`);
+  }
+  if (infinityMarkers.left) {
+    const xBottom = 72;
+    const xTop = 8;
+    fillPaths.push(`M ${xTop} 0 L 0 0 L 0 ${height} L ${xBottom} ${height} Z`);
+    paths.push(`M ${xBottom} ${height + 28} L ${xTop} -16`);
+  }
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add("infinity-markers");
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  if (fillPaths.length) {
+    const mask = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    mask.setAttribute("d", fillPaths.join(" "));
+    mask.classList.add("infinity-mask");
+    svg.appendChild(mask);
+  }
+  if (paths.length) {
+    const cut = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    cut.setAttribute("d", paths.join(" "));
+    svg.appendChild(cut);
+  }
+  overlay.appendChild(svg);
+}
+
+function renderInfinitySelectionTargets(width, height) {
+  if (!infinityModeActive) return;
+  ['left', 'right'].forEach((side) => {
+    const column = side === 'left' ? 0 : numCols - 1;
+    const target = document.createElement("button");
+    target.type = "button";
+    target.className = `infinity-column-target infinity-${side}`;
+    target.title = `Inserir ou remover infinidade na coluna ${side === 'left' ? 'esquerda' : 'direita'}`;
+    target.setAttribute("aria-label", target.title);
+    target.style.left = `${getX(column)}px`;
+    target.style.width = `${columnWidths[column]}px`;
+    target.style.height = `${height}px`;
+    target.addEventListener("click", (event) => {
+      event.stopPropagation();
+      infinityMarkers[side] = !infinityMarkers[side];
+      redrawAll();
+    });
+    overlay.appendChild(target);
+  });
 }
 
 function updateCroquiPosition() {
@@ -579,37 +668,165 @@ function updateCroquiPosition() {
   }
 }
 
+function drawCornersOnExport(ctx, layout) {
+  if (!cornerBoundaries.size) return;
+  ctx.save();
+  ctx.strokeStyle = "#000";
+  ctx.fillStyle = "#000";
+  ctx.lineWidth = 2;
+  ctx.font = "bold 12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  cornerBoundaries.forEach((boundary) => {
+    const x = layout.paddingLeft + getX(boundary);
+    const vTipY = layout.paddingTop - 5;
+    ctx.fillText("CANTO", x, vTipY - 16);
+    ctx.beginPath();
+    ctx.moveTo(x - 9, vTipY - 9);
+    ctx.lineTo(x, vTipY);
+    ctx.lineTo(x + 9, vTipY - 9);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawInfinityOnExport(ctx, layout, baseCanvas, mode) {
+  const width = baseCanvas.width;
+  const height = baseCanvas.height;
+  if (!infinityMarkers.left && !infinityMarkers.right) return;
+  const totalDimensionOffset = mode === 'detailed' ? 86 : 22;
+  const cutBottomY = layout.paddingTop + height + totalDimensionOffset;
+  const maskBottomY = cutBottomY + 12;
+  ctx.save();
+  ctx.fillStyle = "white";
+  ctx.strokeStyle = "#f8991e";
+  ctx.lineWidth = 5;
+  ctx.lineCap = "square";
+
+  if (infinityMarkers.right) {
+    const xBottom = width - 72;
+    const xTop = width - 8;
+    const xAtMaskBottom = xBottom - ((xTop - xBottom) / height) * (totalDimensionOffset + 12);
+    const outerRight = layout.paddingLeft + width + layout.cotaOffset - 12;
+    const outerTop = layout.paddingTop - layout.espacoExtra;
+    ctx.beginPath();
+    ctx.moveTo(layout.paddingLeft + xTop, outerTop);
+    ctx.lineTo(outerRight, outerTop);
+    ctx.lineTo(outerRight, maskBottomY);
+    ctx.lineTo(layout.paddingLeft + xAtMaskBottom, maskBottomY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(layout.paddingLeft + xAtMaskBottom, maskBottomY + 4);
+    ctx.lineTo(layout.paddingLeft + xTop, outerTop - 8);
+    ctx.stroke();
+  }
+
+  if (infinityMarkers.left) {
+    const xBottom = 72;
+    const xTop = 8;
+    const xAtMaskBottom = xBottom + ((xBottom - xTop) / height) * (totalDimensionOffset + 12);
+    const outerTop = layout.paddingTop - layout.espacoExtra;
+    ctx.beginPath();
+    ctx.moveTo(0, outerTop);
+    ctx.lineTo(layout.paddingLeft + xTop, outerTop);
+    ctx.lineTo(layout.paddingLeft + xAtMaskBottom, maskBottomY);
+    ctx.lineTo(0, maskBottomY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(layout.paddingLeft + xAtMaskBottom, maskBottomY + 4);
+    ctx.lineTo(layout.paddingLeft + xTop, outerTop - 8);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function getComponentName(type) {
   const names = {
     'maxim-ar': 'Maxim-ar',
     veneziana: 'Veneziana',
-    giro: 'Porta de Giro'
+    giro: 'Porta de Giro',
+    acm: 'ACM'
   };
   return names[type] || type;
 }
 
 function updateInsertModeStatus() {
   document.querySelectorAll("#sidebar .component").forEach((component) => {
-    component.classList.toggle('selected', activeInsertMode?.type === component.dataset.type);
+    component.classList.toggle('selected', Boolean(activeInsertMode && component.dataset.type === activeInsertMode.type));
   });
+  cornerModeBtn.classList.toggle('active', cornerModeActive);
+  infinityModeBtn.classList.toggle('active', infinityModeActive);
+  cornerModeBtn.setAttribute('aria-pressed', String(cornerModeActive));
+  infinityModeBtn.setAttribute('aria-pressed', String(infinityModeActive));
 
-  if (!activeInsertMode) {
+  const isEditing = Boolean(activeInsertMode || cornerModeActive || infinityModeActive);
+  document.body.classList.toggle('editing-mode', isEditing);
+  if (!isEditing) {
     insertModeStatus.classList.remove('visible');
     insertModeStatus.innerHTML = '';
     return;
   }
 
-  const scopeText = activeInsertMode.scope === 'row' ? 'Clique em uma linha para preencher.' : 'Clique em um quadro vazio.';
+  const title = cornerModeActive ? 'Canto' : infinityModeActive ? 'Infinidade' : getComponentName(activeInsertMode.type);
+  const scopeText = cornerModeActive
+    ? 'Clique em um montante para adicionar ou remover um canto.'
+    : infinityModeActive
+      ? 'Clique em um quadro da coluna esquerda ou direita para cortar a fachada.'
+      : activeInsertMode.scope === 'row' ? 'Clique em uma linha para preencher.' : 'Clique em um quadro vazio.';
   insertModeStatus.innerHTML = `
-    <strong>${getComponentName(activeInsertMode.type)}</strong><br>
+    <strong>${title}</strong><br>
     ${scopeText}
-    <button type="button" id="cancel-insert-mode-btn">Cancelar</button>
+    <div class="edit-mode-actions">
+      ${cornerModeActive || infinityModeActive ? '<button type="button" class="edit-mode-confirm" aria-label="Finalizar" title="Finalizar">&#10003;</button>' : ''}
+      <button type="button" class="edit-mode-cancel" aria-label="Cancelar" title="Cancelar">&times;</button>
+    </div>
   `;
   insertModeStatus.classList.add('visible');
-  document.getElementById('cancel-insert-mode-btn').addEventListener('click', () => clearInsertMode());
+  insertModeStatus.querySelector('.edit-mode-cancel').addEventListener('click', cancelEditingMode);
+  insertModeStatus.querySelector('.edit-mode-confirm')?.addEventListener('click', () => {
+    if (cornerModeActive) finishCornerEditing();
+    else finishInfinityEditing();
+  });
+}
+
+function cancelEditingMode() {
+  if (activeGiroCancel) {
+    activeGiroCancel();
+    return;
+  }
+  if (cornerModeActive) {
+    if (cornerEditSnapshot) cornerBoundaries = new Set(cornerEditSnapshot);
+    finishCornerEditing();
+  } else if (infinityModeActive) {
+    if (infinityEditSnapshot) infinityMarkers = { ...infinityEditSnapshot };
+    finishInfinityEditing();
+  } else {
+    clearInsertMode();
+  }
+}
+
+function finishCornerEditing() {
+  cornerModeActive = false;
+  cornerEditSnapshot = null;
+  updateInsertModeStatus();
+  cornerModeBtn.blur();
+  redrawAll();
+}
+
+function finishInfinityEditing() {
+  infinityModeActive = false;
+  infinityEditSnapshot = null;
+  updateInsertModeStatus();
+  infinityModeBtn.blur();
+  redrawAll();
 }
 
 function setInsertMode(type, scope) {
+  if (cornerModeActive) finishCornerEditing();
+  if (infinityModeActive) finishInfinityEditing();
   activeInsertMode = { type, scope };
   menuPopup.style.display = "none";
   menuPopup.classList.remove('insert-mode-menu');
@@ -637,6 +854,7 @@ function fillRowWithComponent(row, type) {
 }
 
 async function insertFromActiveMode(r, c) {
+  if (activeGiroCancel) return true;
   if (!activeInsertMode) return false;
 
   const { type, scope } = activeInsertMode;
@@ -742,6 +960,7 @@ function insertComponent(r, c, state, shouldUpdateState = true) {
   
   const comp = document.createElement("div");
   comp.className = "component-placed";
+  if (type === 'acm') comp.classList.add('component-acm');
   comp.style.left = `${left + borderWidth}px`; 
   comp.style.top = `${top + borderWidth}px`;
   comp.style.width = `${width - borderWidth}px`;
@@ -862,10 +1081,12 @@ async function showComponentMenu(e, r, c) { // Adicionamos async aqui
   const svgMaximAr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 102 102"><path d="M1 1 L51 101 L101 1" stroke="black" stroke-width="2" fill="none"/></svg>`;
   const svgVeneziana = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g stroke="black" stroke-width="1"><line y1="5" x2="100" y2="5" x1="0"></line><line y1="15" x2="100" y2="15" x1="0"></line><line y1="25" x2="100" y2="25" x1="0"></line><line y1="35" x2="100" y2="35" x1="0"></line><line y1="45" x2="100" y2="45" x1="0"></line><line y1="55" x2="100" y2="55" x1="0"></line><line y1="65" x2="100" y2="65" x1="0"></line><line y1="75" x2="100" y2="75" x1="0"></line><line y1="85" x2="100" y2="85" x1="0"></line><line y1="95" x2="100" y2="95" x1="0"></line></g></svg>`;
   const svgGiroIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M25 2 L75 50 L25 98" stroke="black" stroke-width="2" fill="none"/></svg>`;
+  const svgAcmIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="8" y="8" width="84" height="84" fill="#d3d3d3"/><text x="50" y="56" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" fill="#6c757d">ACM</text></svg>`;
   const menuOptionsHTML = `
       <div class="option" data-select="maxim-ar" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgMaximAr)}');"></div>
       <div class="option" data-select="veneziana" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgVeneziana)}');"></div>
       <div class="option" data-select="giro" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgGiroIcon)}');"></div>
+      <div class="option" data-select="acm" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgAcmIcon)}');" aria-label="ACM" title="ACM"></div>
   `;
 
   menuPopup.innerHTML = menuOptionsHTML;
@@ -880,23 +1101,10 @@ async function showComponentMenu(e, r, c) { // Adicionamos async aqui
 
       if (selectedType === 'giro') {
         menuPopup.style.display = "none"; // Esconde o menu pequeno imediatamente
-        const giroOptions = await showGiroOptionsMenu(r, c);
-        
-        if (giroOptions) { // Se o usuário confirmou
-          const newState = {
-            type: `giro-${giroOptions.direction}`,
-            master: true,
-            spanY: giroOptions.size,
-            transom: giroOptions.transom,
-          };
-          gridState[r][c] = newState;
-          if (newState.spanY === 2) {
-            gridState[r - 1][c] = { occupiedBy: [r, c] };
-          }
-          redrawAll();
-        }
+        setInsertMode('giro', 'cell');
+        await insertFromActiveMode(r, c);
       } else {
-        if (c === 0) {
+        if (c === 0 && (selectedType === 'maxim-ar' || selectedType === 'veneziana')) {
           showPlacementScopeMenu(event, selectedType, r, c);
         } else {
           menuPopup.style.display = "none";
@@ -1085,6 +1293,8 @@ function createExportCanvas(baseCanvas, mode) {
   } else {
     drawSimpleDimensions(ctx, baseCanvas, layout);
   }
+  drawCornersOnExport(ctx, layout);
+  drawInfinityOnExport(ctx, layout, baseCanvas, mode);
 
   return finalCanvas;
 }
@@ -1203,13 +1413,41 @@ document.addEventListener("click", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === 'Escape' && activeInsertMode) {
-    clearInsertMode();
+  if (e.key === 'Escape' && (activeInsertMode || cornerModeActive || infinityModeActive)) {
+    cancelEditingMode();
   }
 });
 
+cornerModeBtn.addEventListener("click", () => {
+  if (cornerModeActive) {
+    finishCornerEditing();
+    return;
+  }
+  if (infinityModeActive) finishInfinityEditing();
+  clearInsertMode(false);
+  cornerEditSnapshot = new Set(cornerBoundaries);
+  cornerModeActive = true;
+  updateInsertModeStatus();
+  cornerModeBtn.blur();
+  redrawAll();
+});
+
+infinityModeBtn.addEventListener("click", () => {
+  if (infinityModeActive) {
+    finishInfinityEditing();
+    return;
+  }
+  if (cornerModeActive) finishCornerEditing();
+  clearInsertMode(false);
+  infinityEditSnapshot = { ...infinityMarkers };
+  infinityModeActive = true;
+  updateInsertModeStatus();
+  infinityModeBtn.blur();
+  redrawAll();
+});
+
 function initializeSidebarComponents() {
-  const components = document.querySelectorAll("#sidebar .component");
+  const components = document.querySelectorAll("#sidebar .component[data-type]");
   components.forEach(component => {
     component.addEventListener("click", (e) => {
       const type = component.dataset.type;
