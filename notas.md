@@ -1,3 +1,78 @@
+# Notas de Atualização da Versão 1.1.1 - 13/11/2026
+
+## Novas Funcionalidades
+1. **Nova tela de visualização e exportação**
+   - A geração do croqui agora abre uma tela própria, substituindo a antiga janela central.
+   - Adicionada transição horizontal entre o editor e a visualização, com botão para retornar à edição sem perder o desenho.
+   - O painel de exportação reúne nome do arquivo, cotas, tamanho da imagem e informações da fachada.
+   - Disponíveis três modos de cotas: `Sem cotas`, `Apresentação` com `L/H` e `Com medidas`, com valores por módulo e totais.
+   - Exibidos largura total, altura total, modulação, resolução em pixels e peso do arquivo PNG.
+   - Adicionados estados de preparação e erro, com opção de tentar gerar novamente.
+   - O download mantém a visualização aberta, e o nome personalizado é preservado ao trocar as opções de exportação ou voltar à visualização.
+   - Adicionado botão `Salvar`, ainda desativado e identificado como `Em breve`, reservado para a futura integração com obras.
+
+2. **Zoom e navegação no croqui**
+   - Adicionados controles para aumentar e diminuir o zoom, informar a porcentagem, ajustar à tela e retornar à escala `1:1`.
+   - A visualização abre por padrão em tamanho real, com zoom de `100%`.
+   - É possível arrastar a imagem para navegar, usar as barras de rolagem ou alterar o zoom com `Ctrl` e a roda do mouse.
+   - O zoom afeta somente a visualização, sem alterar a resolução do PNG baixado.
+
+3. **Tamanho fixo para o PNG**
+   - Adicionada escolha entre tamanho `Automático`, mantido como padrão, e `Tamanho fixo`.
+   - No modo automático, as dimensões do PNG continuam acompanhando o tamanho do desenho.
+   - O modo fixo começa em `640×480px` e permite editar largura e altura da imagem.
+   - Desenhos menores ficam centralizados sem ampliação; desenhos maiores são reduzidos proporcionalmente para caber, incluindo suas cotas.
+   - A área restante recebe fundo branco, sem deformar nem cortar o croqui.
+   - Adicionada validação dos valores e bloqueio do download quando o tamanho informado é inválido.
+
+4. **Contagem de componentes utilizados**
+   - O resumo da visualização agora mostra as quantidades de `Maxim-ar`, `Veneziana`, `Porta de giro` e `ACM` presentes no desenho.
+   - Somente componentes com quantidade maior que zero aparecem, e a seção fica oculta quando não há componentes.
+   - Portas de dois módulos contam como uma única porta; aberturas à esquerda e à direita são agrupadas no mesmo total.
+   - A contagem é atualizada ao gerar novamente o croqui após editar a fachada.
+
+5. **Infinidade horizontal**
+   - Adicionada escolha entre cortes `Vertical` e `Horizontal` no balão da Infinidade, com vertical selecionado por padrão.
+   - O modo horizontal permite selecionar a primeira ou a última linha de quadros e aplicar o corte em toda a largura da fachada.
+   - Somente os alvos da orientação escolhida ficam destacados em laranja, evitando sobreposição de opções.
+   - O corte horizontal remove o trecho dos módulos e do contorno externo e interrompe a cota `H`, preservando a cota `L`.
+   - É possível manter marcações nos dois sentidos; trocar a orientação não apaga os cortes já escolhidos.
+   - Em fachadas com uma única linha ou coluna, as áreas de seleção são divididas para manter as duas extremidades acessíveis.
+
+## Correções
+1. **Troca de componente durante a configuração da porta**
+   - Evitado que uma configuração cancelada da Porta de Giro limpe o modo de inserção de outro componente selecionado em seguida.
+
+2. **Resultados atrasados na geração do PNG**
+   - Fechar a visualização durante a geração descarta o resultado pendente, sem reabrir a tela depois de voltar ao editor.
+   - Trocas rápidas nas opções de exportação mantêm o resultado da última seleção, evitando que uma imagem anterior substitua a configuração atual.
+
+## Ajustes
+1. **Edição de medidas em balão**
+   - Os modais centrais de largura da coluna e altura da linha foram substituídos por balões no padrão das opções da Porta de Giro.
+   - Mantidos o clique direto no rótulo e o botão de modificar, com confirmação verde e cancelamento vermelho.
+   - A validação de `15` a `400cm` aparece no próprio balão, sem abrir outro modal central.
+
+2. **Posição e ordem dos balões**
+   - Os balões passaram do canto inferior esquerdo para o canto superior esquerdo da área do desenho.
+   - Quando há mais de um, eles são organizados de cima para baixo: primeiro o aviso de inserção e depois as opções da Porta de Giro.
+   - O cancelamento duplicado continua oculto no aviso de inserção enquanto a configuração da porta está aberta.
+
+3. **Cancelamento e destaque da edição**
+   - Removido o desfoque da interface; os alvos disponíveis continuam destacados em laranja.
+   - Clicar fora dos balões e dos alvos válidos agora cancela como o X vermelho, sem inserir ou excluir componentes por acidente no grid.
+   - O comportamento também vale para configurações de porta e medidas; Canto e Infinidade restauram as marcações anteriores à sessão ao cancelar.
+   - Mantida a possibilidade de trocar diretamente para outro componente pela barra lateral.
+
+4. **Escolha entre quadro único e linha inteira**
+   - A escolha para `Maxim-ar`, `Veneziana` e `ACM` saiu dos menus flutuantes e passou para o balão de inserção.
+   - Pela barra lateral, o modo começa em `Quadro único`, com opção de mudar para `Linha inteira`, sem confirmação adicional depois de clicar no alvo.
+   - Pelo menu `+` da coluna A, o balão identifica o quadro selecionado e permite escolher a abrangência antes de confirmar a inserção.
+   - Nas demais colunas, a inserção pelo `+` continua imediata e individual, sem balão de confirmação.
+   - A inserção em linha inteira mantém os quadros já ocupados.
+
+---
+
 # Notas de Atualização da Versão 1.1.0 - 12/11/2026
 
 ## Novas Funcionalidades

@@ -12,12 +12,7 @@ const gridContainer = document.getElementById("grid-container");
 const canvasContainer = document.getElementById("canvas-container");
 const croquiWrapper = document.getElementById("croqui-wrapper");
 const generateBtn = document.getElementById("generate-btn");
-const modalOverlay = document.getElementById("modal-overlay");
-const modalImageContainer = document.getElementById("modal-image-container");
-const modalCancelBtn = document.getElementById("modal-cancel-btn");
-const modalDownloadBtn = document.getElementById("modal-download-btn");
 const moduleSizePresetInput = document.getElementById("module-size-preset");
-const exportModeSelect = document.getElementById("export-mode");
 const insertModeStatus = document.getElementById("insert-mode-status");
 const cornerModeBtn = document.getElementById("corner-mode-btn");
 const infinityModeBtn = document.getElementById("infinity-mode-btn");
@@ -36,10 +31,12 @@ let activeInsertMode = null;
 let cornerBoundaries = new Set();
 let cornerModeActive = false;
 let infinityModeActive = false;
-let infinityMarkers = { left: false, right: false };
+let infinityOrientation = 'vertical';
+let infinityMarkers = { left: false, right: false, top: false, bottom: false };
 let cornerEditSnapshot = null;
 let infinityEditSnapshot = null;
 let activeGiroCancel = null;
+let activeMeasureCancel = null;
 
 // --- FUNÇÕES DE LÓGICA DO GRID ---
 function getX(col) { return columnWidths.slice(0, col).reduce((a, b) => a + b, 0); }
@@ -55,7 +52,8 @@ function resetGridState(newRows, newCols) {
   rowsInput.value = newRows;
   gridState = Array(numRows).fill(null).map(() => Array(numCols).fill(null));
   cornerBoundaries.clear();
-  infinityMarkers = { left: false, right: false };
+  infinityMarkers = { left: false, right: false, top: false, bottom: false };
+  infinityOrientation = 'vertical';
   columnWidths = Array(numCols).fill(cmToGridSize(defaultModuleSizeCm));
   rowHeights = Array(numRows).fill(cmToGridSize(defaultModuleSizeCm));
   updateGrid();
@@ -450,46 +448,76 @@ function createLabelEditButton(className, title, text, onClick) {
   return button;
 }
 
-async function editColumnWidth(index) {
-  const labelText = String.fromCharCode(65 + index);
-  const result = await showCustomModal({
-    title: 'Alterar Largura da Coluna',
-    text: `Digite a nova largura para a coluna ${labelText} (${minModuleSizeCm}-${maxModuleSizeCm} cm):`,
-    inputType: 'number',
-    initialValue: gridSizeToCm(columnWidths[index]),
-    confirmText: 'Alterar',
-    cancelText: 'Cancelar'
-  });
+function showMeasureOptions(title, label, initialValue) {
+  if (activeMeasureCancel) return Promise.resolve(null);
+  const form = document.getElementById('measure-options');
+  const input = document.getElementById('measure-options-input');
+  const error = document.getElementById('measure-options-error');
+  const cancel = document.getElementById('measure-options-cancel-btn');
+  const previousFocus = document.activeElement;
+  document.getElementById('measure-options-title').textContent = title;
+  document.getElementById('measure-options-label').textContent = label;
+  input.min = minModuleSizeCm;
+  input.max = maxModuleSizeCm;
+  input.value = initialValue;
+  error.textContent = `Informe uma medida inteira entre ${minModuleSizeCm} e ${maxModuleSizeCm}cm.`;
+  error.hidden = true;
+  input.removeAttribute('aria-invalid');
+  menuPopup.style.display = 'none';
 
-  if (result !== false && result !== null && result !== '') {
-    const newSize = parseInt(result);
-    if (!isNaN(newSize) && newSize >= minModuleSizeCm && newSize <= maxModuleSizeCm) {
-      columnWidths[index] = cmToGridSize(newSize);
-      updateGrid();
-    } else {
-      showCustomModal({ title: 'Erro', text: `Por favor, insira um valor válido entre ${minModuleSizeCm} e ${maxModuleSizeCm} cm.`, confirmText: 'OK' });
+  return new Promise((resolve) => {
+    const onSubmit = (event) => {
+      event.preventDefault();
+      if (!input.checkValidity()) {
+        error.hidden = false;
+        input.setAttribute('aria-invalid', 'true');
+        input.focus();
+        return;
+      }
+      close(Number(input.value));
+    };
+    const onCancel = () => close(null);
+    const onInput = () => {
+      error.hidden = true;
+      input.removeAttribute('aria-invalid');
+    };
+    function close(result) {
+      form.style.display = 'none';
+      form.removeEventListener('submit', onSubmit);
+      cancel.removeEventListener('click', onCancel);
+      input.removeEventListener('input', onInput);
+      activeMeasureCancel = null;
+      document.body.classList.remove('measure-options-open');
+      updateInsertModeStatus();
+      if (previousFocus?.isConnected) previousFocus.focus();
+      resolve(result);
     }
+    form.addEventListener('submit', onSubmit);
+    cancel.addEventListener('click', onCancel);
+    input.addEventListener('input', onInput);
+    activeMeasureCancel = onCancel;
+    document.body.classList.add('measure-options-open');
+    updateInsertModeStatus();
+    form.style.display = 'block';
+    input.focus();
+    input.select();
+  });
+}
+
+async function editColumnWidth(index) {
+  const label = String.fromCharCode(65 + index);
+  const result = await showMeasureOptions(`Medida da Coluna ${label}`, 'Largura', gridSizeToCm(columnWidths[index]));
+  if (result !== null) {
+    columnWidths[index] = cmToGridSize(result);
+    updateGrid();
   }
 }
 
 async function editRowHeight(index) {
-  const result = await showCustomModal({
-    title: 'Alterar Altura da Linha',
-    text: `Digite a nova altura para a linha ${index + 1} (${minModuleSizeCm}-${maxModuleSizeCm} cm):`,
-    inputType: 'number',
-    initialValue: gridSizeToCm(rowHeights[index]),
-    confirmText: 'Alterar',
-    cancelText: 'Cancelar'
-  });
-
-  if (result !== false && result !== null && result !== '') {
-    const newSize = parseInt(result);
-    if (!isNaN(newSize) && newSize >= minModuleSizeCm && newSize <= maxModuleSizeCm) {
-      rowHeights[index] = cmToGridSize(newSize);
-      updateGrid();
-    } else {
-      showCustomModal({ title: 'Erro', text: `Por favor, insira um valor válido entre ${minModuleSizeCm} e ${maxModuleSizeCm} cm.`, confirmText: 'OK' });
-    }
+  const result = await showMeasureOptions(`Medida da Linha ${index + 1}`, 'Altura', gridSizeToCm(rowHeights[index]));
+  if (result !== null) {
+    rowHeights[index] = cmToGridSize(result);
+    updateGrid();
   }
 }
 
@@ -592,6 +620,11 @@ function generateLines(totalWidth, totalHeight) {
   }
 }
 
+function getHorizontalInfinityY(side, x, width, height) {
+  const distance = 8 + (64 * x / width);
+  return side === 'top' ? distance : height - distance;
+}
+
 function renderInfinityMarkers(width, height) {
   const paths = [];
   const fillPaths = [];
@@ -607,18 +640,26 @@ function renderInfinityMarkers(width, height) {
     fillPaths.push(`M ${xTop} 0 L 0 0 L 0 ${height} L ${xBottom} ${height} Z`);
     paths.push(`M ${xBottom} ${height + 28} L ${xTop} -16`);
   }
+  ['top', 'bottom'].forEach((side) => {
+    if (!infinityMarkers[side]) return;
+    const yLeft = getHorizontalInfinityY(side, 0, width, height);
+    const yRight = getHorizontalInfinityY(side, width, width, height);
+    const edgeY = side === 'top' ? 0 : height;
+    fillPaths.push(`M 0 ${yLeft} L ${width} ${yRight} L ${width} ${edgeY} L 0 ${edgeY} Z`);
+    paths.push(`M -16 ${getHorizontalInfinityY(side, -16, width, height)} L ${width + 28} ${getHorizontalInfinityY(side, width + 28, width, height)}`);
+  });
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("infinity-markers");
   svg.setAttribute("width", width);
   svg.setAttribute("height", height);
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  if (fillPaths.length) {
+  fillPaths.forEach((path) => {
     const mask = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    mask.setAttribute("d", fillPaths.join(" "));
+    mask.setAttribute("d", path);
     mask.classList.add("infinity-mask");
     svg.appendChild(mask);
-  }
+  });
   if (paths.length) {
     const cut = document.createElementNS("http://www.w3.org/2000/svg", "path");
     cut.setAttribute("d", paths.join(" "));
@@ -629,16 +670,32 @@ function renderInfinityMarkers(width, height) {
 
 function renderInfinitySelectionTargets(width, height) {
   if (!infinityModeActive) return;
-  ['left', 'right'].forEach((side) => {
-    const column = side === 'left' ? 0 : numCols - 1;
+  const isVertical = infinityOrientation === 'vertical';
+  const sides = isVertical ? ['left', 'right'] : ['top', 'bottom'];
+  sides.forEach((side, index) => {
     const target = document.createElement("button");
     target.type = "button";
-    target.className = `infinity-column-target infinity-${side}`;
-    target.title = `Inserir ou remover infinidade na coluna ${side === 'left' ? 'esquerda' : 'direita'}`;
+    target.className = `infinity-selection-target infinity-${isVertical ? 'column' : 'row'}-target infinity-${side}`;
+    target.title = isVertical
+      ? `Inserir ou remover infinidade na coluna ${side === 'left' ? 'esquerda' : 'direita'}`
+      : `Inserir ou remover infinidade na linha ${side === 'top' ? 'superior' : 'inferior'}`;
     target.setAttribute("aria-label", target.title);
-    target.style.left = `${getX(column)}px`;
-    target.style.width = `${columnWidths[column]}px`;
-    target.style.height = `${height}px`;
+    target.setAttribute('aria-pressed', String(infinityMarkers[side]));
+    if (isVertical) {
+      const column = index === 0 ? 0 : numCols - 1;
+      const targetWidth = numCols === 1 ? width / 2 : columnWidths[column];
+      target.style.left = `${numCols === 1 ? index * targetWidth : getX(column)}px`;
+      target.style.top = '0px';
+      target.style.width = `${targetWidth}px`;
+      target.style.height = `${height}px`;
+    } else {
+      const row = index === 0 ? 0 : numRows - 1;
+      const targetHeight = numRows === 1 ? height / 2 : rowHeights[row];
+      target.style.left = '0px';
+      target.style.top = `${numRows === 1 ? index * targetHeight : getY(row)}px`;
+      target.style.width = `${width}px`;
+      target.style.height = `${targetHeight}px`;
+    }
     target.addEventListener("click", (event) => {
       event.stopPropagation();
       infinityMarkers[side] = !infinityMarkers[side];
@@ -694,8 +751,8 @@ function drawCornersOnExport(ctx, layout) {
 function drawInfinityOnExport(ctx, layout, baseCanvas, mode) {
   const width = baseCanvas.width;
   const height = baseCanvas.height;
-  if (!infinityMarkers.left && !infinityMarkers.right) return;
-  const totalDimensionOffset = mode === 'detailed' ? 86 : 22;
+  if (!Object.values(infinityMarkers).some(Boolean)) return;
+  const totalDimensionOffset = mode === 'detailed' ? 86 : mode === 'none' ? 0 : 22;
   const cutBottomY = layout.paddingTop + height + totalDimensionOffset;
   const maskBottomY = cutBottomY + 12;
   ctx.save();
@@ -740,6 +797,24 @@ function drawInfinityOnExport(ctx, layout, baseCanvas, mode) {
     ctx.lineTo(layout.paddingLeft + xTop, outerTop - 8);
     ctx.stroke();
   }
+  ['top', 'bottom'].forEach((side) => {
+    if (!infinityMarkers[side]) return;
+    const leftX = -layout.espacoExtra;
+    const rightX = width + totalDimensionOffset + 12;
+    const edgeY = side === 'top' ? 0 : layout.paddingTop + height + layout.cotaOffset - 12;
+    const yAt = (x) => layout.paddingTop + getHorizontalInfinityY(side, x, width, height);
+    ctx.beginPath();
+    ctx.moveTo(layout.paddingLeft + leftX, yAt(leftX));
+    ctx.lineTo(layout.paddingLeft + rightX, yAt(rightX));
+    ctx.lineTo(layout.paddingLeft + rightX, edgeY);
+    ctx.lineTo(layout.paddingLeft + leftX, edgeY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(layout.paddingLeft + leftX - 8, yAt(leftX - 8));
+    ctx.lineTo(layout.paddingLeft + rightX + 4, yAt(rightX + 4));
+    ctx.stroke();
+  });
   ctx.restore();
 }
 
@@ -763,7 +838,7 @@ function updateInsertModeStatus() {
   infinityModeBtn.setAttribute('aria-pressed', String(infinityModeActive));
 
   const isEditing = Boolean(activeInsertMode || cornerModeActive || infinityModeActive);
-  document.body.classList.toggle('editing-mode', isEditing);
+  document.body.classList.toggle('editing-mode', Boolean(isEditing || activeMeasureCancel));
   if (!isEditing) {
     insertModeStatus.classList.remove('visible');
     insertModeStatus.innerHTML = '';
@@ -771,30 +846,67 @@ function updateInsertModeStatus() {
   }
 
   const title = cornerModeActive ? 'Canto' : infinityModeActive ? 'Infinidade' : getComponentName(activeInsertMode.type);
+  const canSelectScope = activeInsertMode && ['maxim-ar', 'veneziana', 'acm'].includes(activeInsertMode.type);
+  const placementTarget = activeInsertMode?.target;
   const scopeText = cornerModeActive
     ? 'Clique em um montante para adicionar ou remover um canto.'
     : infinityModeActive
-      ? 'Clique em um quadro da coluna esquerda ou direita para cortar a fachada.'
-      : activeInsertMode.scope === 'row' ? 'Clique em uma linha para preencher.' : 'Clique em um quadro vazio.';
+      ? (infinityOrientation === 'vertical'
+        ? 'Clique em um quadro da coluna esquerda ou direita para adicionar ou remover o corte.'
+        : 'Clique em um quadro da primeira ou da última linha para adicionar ou remover o corte.')
+      : placementTarget
+        ? (activeInsertMode.scope === 'row' ? `Linha ${placementTarget.row + 1} selecionada.` : `Quadro ${String.fromCharCode(65 + placementTarget.col)}${placementTarget.row + 1} selecionado.`)
+        : activeInsertMode.scope === 'row' ? 'Clique em um quadro vazio da coluna A para preencher a linha.' : 'Clique em um quadro vazio.';
   insertModeStatus.innerHTML = `
-    <strong>${title}</strong><br>
+    <strong>${title}</strong>
+    ${infinityModeActive ? `
+      <div class="infinity-orientation" role="group" aria-label="Orientação do corte">
+        <button type="button" class="infinity-orientation-option ${infinityOrientation === 'vertical' ? 'selected' : ''}" data-infinity-orientation="vertical" aria-pressed="${infinityOrientation === 'vertical'}">Vertical</button>
+        <button type="button" class="infinity-orientation-option ${infinityOrientation === 'horizontal' ? 'selected' : ''}" data-infinity-orientation="horizontal" aria-pressed="${infinityOrientation === 'horizontal'}">Horizontal</button>
+      </div>` : canSelectScope ? `
+      <div class="placement-scope" role="group" aria-label="Inserir em">
+        <button type="button" class="placement-scope-option ${activeInsertMode.scope === 'cell' ? 'selected' : ''}" data-placement-scope="cell" aria-pressed="${activeInsertMode.scope === 'cell'}">Quadro único</button>
+        <button type="button" class="placement-scope-option ${activeInsertMode.scope === 'row' ? 'selected' : ''}" data-placement-scope="row" aria-pressed="${activeInsertMode.scope === 'row'}">Linha inteira</button>
+      </div>` : '<br>'}
     ${scopeText}
     <div class="edit-mode-actions">
-      ${cornerModeActive || infinityModeActive ? '<button type="button" class="edit-mode-confirm" aria-label="Finalizar" title="Finalizar">&#10003;</button>' : ''}
+      ${cornerModeActive || infinityModeActive || placementTarget ? `<button type="button" class="edit-mode-confirm" aria-label="${placementTarget ? 'Inserir componente' : 'Finalizar'}" title="${placementTarget ? 'Inserir componente' : 'Finalizar'}">&#10003;</button>` : ''}
       <button type="button" class="edit-mode-cancel" aria-label="Cancelar" title="Cancelar">&times;</button>
     </div>
   `;
   insertModeStatus.classList.add('visible');
+  insertModeStatus.querySelectorAll('[data-placement-scope]').forEach((button) => {
+    button.addEventListener('click', () => {
+      activeInsertMode.scope = button.dataset.placementScope;
+      updateInsertModeStatus();
+      redrawAll();
+      insertModeStatus.querySelector(`[data-placement-scope="${activeInsertMode.scope}"]`).focus({ preventScroll: true });
+    });
+  });
+  insertModeStatus.querySelectorAll('[data-infinity-orientation]').forEach((button) => {
+    button.addEventListener('click', () => {
+      infinityOrientation = button.dataset.infinityOrientation;
+      updateInsertModeStatus();
+      redrawAll();
+      insertModeStatus.querySelector(`[data-infinity-orientation="${infinityOrientation}"]`).focus({ preventScroll: true });
+    });
+  });
   insertModeStatus.querySelector('.edit-mode-cancel').addEventListener('click', cancelEditingMode);
   insertModeStatus.querySelector('.edit-mode-confirm')?.addEventListener('click', () => {
-    if (cornerModeActive) finishCornerEditing();
+    if (activeInsertMode?.target) insertFromActiveMode(activeInsertMode.target.row, activeInsertMode.target.col);
+    else if (cornerModeActive) finishCornerEditing();
     else finishInfinityEditing();
   });
 }
 
 function cancelEditingMode() {
+  if (activeMeasureCancel) {
+    activeMeasureCancel();
+    return;
+  }
   if (activeGiroCancel) {
     activeGiroCancel();
+    clearInsertMode();
     return;
   }
   if (cornerModeActive) {
@@ -824,10 +936,10 @@ function finishInfinityEditing() {
   redrawAll();
 }
 
-function setInsertMode(type, scope) {
+function setInsertMode(type, scope, target = null) {
   if (cornerModeActive) finishCornerEditing();
   if (infinityModeActive) finishInfinityEditing();
-  activeInsertMode = { type, scope };
+  activeInsertMode = { type, scope, target };
   menuPopup.style.display = "none";
   menuPopup.classList.remove('insert-mode-menu');
   updateInsertModeStatus();
@@ -857,6 +969,7 @@ async function insertFromActiveMode(r, c) {
   if (activeGiroCancel) return true;
   if (!activeInsertMode) return false;
 
+  const insertionMode = activeInsertMode;
   const { type, scope } = activeInsertMode;
   if (scope === 'row') {
     if (c !== 0) {
@@ -875,6 +988,7 @@ async function insertFromActiveMode(r, c) {
 
   if (type === 'giro') {
     const giroOptions = await showGiroOptionsMenu(r, c);
+    if (activeInsertMode !== insertionMode) return true;
     clearInsertMode(false);
     if (giroOptions) {
       const newState = {
@@ -916,12 +1030,16 @@ function createAddButton(r, c) {
   addBtn.style.height = `${rowHeights[r] - borderWidth}px`;
   addBtn.innerText = "+";
   
-  if (activeInsertMode) {
+  const target = activeInsertMode?.target;
+  if (activeInsertMode && (target
+    ? r === target.row && (activeInsertMode.scope === 'row' || c === target.col)
+    : activeInsertMode.scope !== 'row' || c === 0)) {
     addBtn.classList.add('insert-target');
   }
 
   addBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
+    if (activeInsertMode?.target) return;
     if (await insertFromActiveMode(r, c)) return;
     showComponentMenu(e, r, c);
   });
@@ -1105,7 +1223,7 @@ async function showComponentMenu(e, r, c) { // Adicionamos async aqui
         await insertFromActiveMode(r, c);
       } else {
         if (c === 0 && (selectedType === 'maxim-ar' || selectedType === 'veneziana' || selectedType === 'acm')) {
-          showPlacementScopeMenu(event, selectedType, r, c);
+          setInsertMode(selectedType, 'cell', { row: r, col: c });
         } else {
           menuPopup.style.display = "none";
           gridState[r][c] = { type: selectedType, master: true };
@@ -1113,52 +1231,6 @@ async function showComponentMenu(e, r, c) { // Adicionamos async aqui
         }
       }
     };
-  });
-}
-
-function showPlacementScopeMenu(e, type, r, c) {
-  menuPopup.classList.add('insert-mode-menu');
-  menuPopup.innerHTML = `
-    <button type="button" class="insert-mode-option" data-scope="cell">Inserir somente neste quadro</button>
-    <button type="button" class="insert-mode-option" data-scope="row">Inserir na linha inteira</button>
-  `;
-  menuPopup.style.display = "flex";
-  menuPopup.style.left = `${e.clientX}px`;
-  menuPopup.style.top = `${e.clientY}px`;
-
-  menuPopup.querySelectorAll(".insert-mode-option").forEach((option) => {
-    option.addEventListener('click', (event) => {
-      event.stopPropagation();
-      menuPopup.style.display = "none";
-      menuPopup.classList.remove('insert-mode-menu');
-
-      if (option.dataset.scope === 'row') {
-        fillRowWithComponent(r, type);
-      } else {
-        gridState[r][c] = { type, master: true };
-      }
-
-      redrawAll();
-    });
-  });
-}
-
-function showInsertModeMenu(e, type) {
-  e.stopPropagation();
-  menuPopup.classList.add('insert-mode-menu');
-  menuPopup.innerHTML = `
-    <button type="button" class="insert-mode-option" data-scope="cell">Selecionar quadro a ser inserido</button>
-    <button type="button" class="insert-mode-option" data-scope="row">Selecionar linha a ser inserida</button>
-  `;
-  menuPopup.style.display = "flex";
-  menuPopup.style.left = `${e.clientX}px`;
-  menuPopup.style.top = `${e.clientY}px`;
-
-  menuPopup.querySelectorAll(".insert-mode-option").forEach((option) => {
-    option.addEventListener('click', (event) => {
-      event.stopPropagation();
-      setInsertMode(type, option.dataset.scope);
-    });
   });
 }
 
@@ -1264,12 +1336,13 @@ function createExportCanvas(baseCanvas, mode) {
   const marcoEspessura = 3;
   const espacoExtra = marcoRespiro + marcoEspessura;
   const isDetailed = mode === 'detailed';
+  const noDimensions = mode === 'none';
   const layout = {
     espacoExtra,
-    paddingTop: 50 + espacoExtra,
-    paddingLeft: 50 + espacoExtra,
-    paddingBottom: (isDetailed ? 130 : 70) + espacoExtra,
-    paddingRight: (isDetailed ? 210 : 70) + espacoExtra,
+    paddingTop: (noDimensions ? 36 : 50) + espacoExtra,
+    paddingLeft: (noDimensions ? 36 : 50) + espacoExtra,
+    paddingBottom: (noDimensions ? 36 : isDetailed ? 130 : 70) + espacoExtra,
+    paddingRight: (noDimensions ? 36 : isDetailed ? 210 : 70) + espacoExtra,
     cotaOffset: 22
   };
 
@@ -1290,7 +1363,7 @@ function createExportCanvas(baseCanvas, mode) {
 
   if (isDetailed) {
     drawDetailedDimensions(ctx, baseCanvas, layout);
-  } else {
+  } else if (!noDimensions) {
     drawSimpleDimensions(ctx, baseCanvas, layout);
   }
   drawCornersOnExport(ctx, layout);
@@ -1298,58 +1371,6 @@ function createExportCanvas(baseCanvas, mode) {
 
   return finalCanvas;
 }
-
-let currentPreviewBaseCanvas = null;
-
-function renderExportPreview(mode) {
-  if (!currentPreviewBaseCanvas) return;
-  const finalCanvas = createExportCanvas(currentPreviewBaseCanvas, mode);
-  const finalImage = new Image();
-  finalImage.src = finalCanvas.toDataURL('image/png');
-  modalImageContainer.innerHTML = '';
-  modalImageContainer.appendChild(finalImage);
-
-  const filenameInput = document.getElementById('filename-input');
-  const suffix = mode === 'detailed' ? 'COTADO' : 'APRESENTACAO';
-  filenameInput.value = `ELEVFAC-${numCols}X${numRows}-${suffix}.png`;
-}
-
-generateBtn.addEventListener("click", () => {
-  const gridElement = document.getElementById("grid-container");
-  const mode = exportModeSelect.value;
-  html2canvas(gridElement).then(baseCanvas => {
-    currentPreviewBaseCanvas = baseCanvas;
-    renderExportPreview(mode);
-    modalOverlay.style.display = 'flex';
-  });
-});
-modalCancelBtn.addEventListener('click', () => {
-  modalOverlay.style.display = 'none';
-  currentPreviewBaseCanvas = null;
-});
-modalDownloadBtn.addEventListener('click', () => {
-  const finalImage = modalImageContainer.querySelector('img');
-  const filenameInput = document.getElementById('filename-input');
-  if (finalImage && filenameInput) {
-    let filename = filenameInput.value.trim(); 
-    if (filename === '') {
-      filename = `ELEVFAC-${numCols}X${numRows}.png`;
-    }
-    if (!filename.toLowerCase().endsWith('.png')) {
-      filename += '.png';
-    }
-    const link = document.createElement('a');
-    link.href = finalImage.src;
-    link.download = filename;
-    link.click();
-  }
-  modalOverlay.style.display = 'none';
-  currentPreviewBaseCanvas = null;
-});
-
-exportModeSelect.addEventListener('change', () => {
-  renderExportPreview(exportModeSelect.value);
-});
 
 // --- EVENTOS GERAIS ---
 function applyPresetSize(target) {
@@ -1405,6 +1426,33 @@ clearGridBtn.addEventListener("click", async () => {
   }
 });
 
+// Capture outside clicks before grid handlers can open another menu or remove a component.
+document.addEventListener('click', (e) => {
+  if (!activeInsertMode && !cornerModeActive && !infinityModeActive && !activeMeasureCancel && !activeGiroCancel) return;
+  const target = e.target;
+  if (target.closest('#edit-mode-notices, #menu-popup, #custom-modal-overlay, #preview-page')) return;
+
+  const component = target.closest('#sidebar .component');
+  if (!activeMeasureCancel && !activeGiroCancel && component && (
+    (activeInsertMode && component.dataset.type === activeInsertMode.type) ||
+    (cornerModeActive && component === cornerModeBtn) ||
+    (infinityModeActive && component === infinityModeBtn)
+  )) return;
+
+  if (!activeMeasureCancel && !activeGiroCancel) {
+    if (cornerModeActive && target.closest('.corner-target')) return;
+    if (infinityModeActive && target.closest('.infinity-selection-target')) return;
+    if (activeInsertMode && target.closest('.add-btn.insert-target')) return;
+  }
+
+  const isCanvasClick = Boolean(target.closest('#canvas-container'));
+  cancelEditingMode();
+  if (isCanvasClick) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
+
 document.addEventListener("click", (e) => {
   if (!menuPopup.contains(e.target) && !e.target.classList.contains('add-btn')) {
     menuPopup.style.display = "none";
@@ -1413,7 +1461,7 @@ document.addEventListener("click", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === 'Escape' && (activeInsertMode || cornerModeActive || infinityModeActive)) {
+  if (e.key === 'Escape' && (activeInsertMode || cornerModeActive || infinityModeActive || activeMeasureCancel)) {
     cancelEditingMode();
   }
 });
@@ -1440,6 +1488,7 @@ infinityModeBtn.addEventListener("click", () => {
   if (cornerModeActive) finishCornerEditing();
   clearInsertMode(false);
   infinityEditSnapshot = { ...infinityMarkers };
+  infinityOrientation = 'vertical';
   infinityModeActive = true;
   updateInsertModeStatus();
   infinityModeBtn.blur();
@@ -1449,13 +1498,9 @@ infinityModeBtn.addEventListener("click", () => {
 function initializeSidebarComponents() {
   const components = document.querySelectorAll("#sidebar .component[data-type]");
   components.forEach(component => {
-    component.addEventListener("click", (e) => {
+    component.addEventListener("click", () => {
       const type = component.dataset.type;
-      if (type === 'maxim-ar' || type === 'veneziana' || type === 'acm') {
-        showInsertModeMenu(e, type);
-      } else {
-        setInsertMode(type, 'cell');
-      }
+      setInsertMode(type, 'cell');
     });
   });
 }

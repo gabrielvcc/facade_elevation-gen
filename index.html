@@ -15,9 +15,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="preview.css" />
   <link rel="icon" href="/favicon.png" type="image/png">
 </head>
 <body>
+  <div id="editor-page" class="app-page">
   <div id="top-bar">
     <div id="brand">
       <img src="favicon.png" alt="Logo Criador de Croquis" />
@@ -52,7 +54,7 @@
       </div>
       <button id="clear-grid-btn">Limpar Fachada</button>
     </div>
-    <button id="generate-btn">Gerar Croqui</button>
+    <button type="button" id="generate-btn"><span>Gerar croqui</span><img src="assets/icons/arrow-left.svg" alt="" /></button>
   </div>
 
   <div id="main-container">
@@ -61,7 +63,7 @@
     <div id="component-list">
     <div class="component" data-type="maxim-ar"  data-tooltip="Maxim-ar"></div>
     <div class="component" data-type="veneziana" data-tooltip="Veneziana"></div>
-    <div class="component" data-type="giro"      data-tooltip="Porta de Giro"></div> 
+    <div class="component" data-type="giro"      data-tooltip="Porta de Giro"></div>
     <button type="button" id="corner-mode-btn" class="component" data-tooltip="Canto" aria-label="Canto" aria-pressed="false"></button>
     <button type="button" id="infinity-mode-btn" class="component" data-tooltip="Infinidade" aria-label="Infinidade" aria-pressed="false"></button>
     <button type="button" class="component" data-type="acm" data-tooltip="ACM" aria-label="ACM"></button>
@@ -82,6 +84,20 @@
         </div>
       </div>
       <div id="edit-mode-notices">
+        <div id="insert-mode-status" role="status" aria-live="polite"></div>
+        <form id="measure-options" style="display: none;" role="dialog" aria-labelledby="measure-options-title" novalidate>
+          <h3 id="measure-options-title">Alterar medida</h3>
+          <label for="measure-options-input" id="measure-options-label">Medida</label>
+          <div class="measure-options-field">
+            <input type="number" id="measure-options-input" step="1" required aria-describedby="measure-options-error" />
+            <span>cm</span>
+          </div>
+          <p id="measure-options-error" role="alert" hidden></p>
+          <div class="edit-mode-actions">
+            <button type="submit" class="edit-mode-confirm" aria-label="Aplicar medida" title="Aplicar medida">&#10003;</button>
+            <button type="button" id="measure-options-cancel-btn" class="edit-mode-cancel" aria-label="Cancelar" title="Cancelar">&times;</button>
+          </div>
+        </form>
         <div id="giro-options-modal-overlay" style="display: none;">
           <div id="giro-options-modal-content" role="dialog" aria-labelledby="giro-options-title">
             <h3 id="giro-options-title">Porta de Giro</h3>
@@ -112,36 +128,82 @@
             </div>
           </div>
         </div>
-        <div id="insert-mode-status" role="status" aria-live="polite"></div>
       </div>
       <div id="bottom-bar">
-        <p>developed by <a href="https://github.com/gabrielvcc" target="_blank">gabrielvc</a> | <a href="/atualizacoes" id="version-link">v1.1.0</a></p>
+        <p>developed by <a href="https://github.com/gabrielvcc" target="_blank">gabrielvc</a> | <a href="/atualizacoes" id="version-link">v1.1.1</a></p>
       </div>
     </div>
   </div>
+  </div>
+  <section id="preview-page" class="app-page" aria-label="Visualização do croqui" aria-hidden="true" inert>
+    <header class="preview-header">
+      <button type="button" id="preview-back" class="preview-back"><img src="assets/icons/arrow-left.svg" alt="" />Editor</button>
+      <div class="preview-brand"><img src="favicon.png" alt="" /><span>Criador de Croquis</span></div>
+    </header>
+    <div class="preview-layout">
+      <aside class="export-panel" aria-label="Configurações de exportação">
+        <div class="export-panel-heading"><span class="preview-eyebrow">FINALIZAÇÃO</span><h1>Exportar croqui</h1></div>
+        <div class="export-field">
+          <label for="filename-input">Nome do arquivo</label>
+          <div class="export-filename"><input id="filename-input" type="text" autocomplete="off" spellcheck="false" maxlength="120" /><span>.png</span></div>
+        </div>
+        <fieldset class="export-dimensions">
+          <legend>Cotas</legend>
+          <div class="export-mode-list" role="group" aria-label="Cotas da imagem">
+            <button type="button" class="export-mode-option" data-export-mode="none" aria-pressed="false"><img src="assets/icons/square.svg" alt="" /><span>Sem cotas</span><span class="export-mode-mark"></span></button>
+            <button type="button" class="export-mode-option selected" data-export-mode="simple" aria-pressed="true"><img src="assets/icons/image.svg" alt="" /><span>Apresentação</span><small>L / H</small><span class="export-mode-mark"></span></button>
+            <button type="button" class="export-mode-option" data-export-mode="detailed" aria-pressed="false"><img src="assets/icons/ruler.svg" alt="" /><span>Com medidas</span><small>cm</small><span class="export-mode-mark"></span></button>
+          </div>
+        </fieldset>
+        <fieldset class="export-dimensions export-sizing">
+          <legend>Tamanho da imagem</legend>
+          <div class="export-mode-list" role="group" aria-label="Tamanho da imagem">
+            <button type="button" class="export-mode-option selected" data-export-sizing="auto" aria-pressed="true"><img src="assets/icons/image.svg" alt="" /><span>Automático</span><span class="export-mode-mark"></span></button>
+            <button type="button" class="export-mode-option" data-export-sizing="fixed" aria-pressed="false"><img src="assets/icons/scan.svg" alt="" /><span>Tamanho fixo</span><span class="export-mode-mark"></span></button>
+          </div>
+          <div id="export-fixed-size" hidden>
+            <div class="export-size-fields">
+              <label for="export-width">Largura<span class="export-size-input"><input type="number" id="export-width" min="1" max="8192" step="1" value="640" required aria-describedby="export-size-error" /><span>px</span></span></label>
+              <label for="export-height">Altura<span class="export-size-input"><input type="number" id="export-height" min="1" max="8192" step="1" value="480" required aria-describedby="export-size-error" /><span>px</span></span></label>
+            </div>
+            <p id="export-size-error" role="alert" hidden></p>
+          </div>
+        </fieldset>
+        <section class="export-summary" aria-labelledby="export-summary-title">
+          <h2 id="export-summary-title">Fachada</h2>
+          <dl><div><dt>Largura total</dt><dd id="preview-total-width">—</dd></div><div><dt>Altura total</dt><dd id="preview-total-height">—</dd></div><div><dt>Modulação</dt><dd id="preview-module-count">—</dd></div></dl>
+        </section>
+        <section id="preview-components" class="export-summary" aria-labelledby="preview-components-title" hidden>
+          <h2 id="preview-components-title">Componentes utilizados</h2>
+          <dl id="preview-component-counts"></dl>
+        </section>
+        <div class="export-file-info"><span class="export-file-badge">PNG</span><div><strong id="preview-image-size">Preparando imagem</strong><span id="preview-file-size">—</span></div></div>
+        <div class="export-actions">
+          <button type="button" id="preview-download" class="preview-primary" disabled><img src="assets/icons/download.svg" alt="" />Baixar PNG</button>
+          <button type="button" id="preview-save" class="preview-secondary" title="Salvar em uma obra: em breve" disabled><img src="assets/icons/save.svg" alt="" /><span>Salvar</span><small>Em breve</small></button>
+        </div>
+      </aside>
+      <main class="preview-workspace" aria-label="Croqui gerado">
+        <div class="preview-toolbar">
+          <div class="preview-document"><img src="assets/icons/image.svg" alt="" /><span id="preview-document-name">Fachada.png</span></div>
+          <div class="preview-tools" role="group" aria-label="Zoom da visualização">
+            <button type="button" id="preview-zoom-out" class="preview-tool" title="Diminuir zoom" aria-label="Diminuir zoom" data-preview-tool disabled><img src="assets/icons/zoom-out.svg" alt="" /></button>
+            <label class="preview-zoom-field"><input type="number" id="preview-zoom" aria-label="Zoom em porcentagem" min="1" max="400" step="1" value="100" disabled /><span>%</span></label>
+            <button type="button" id="preview-zoom-in" class="preview-tool" title="Aumentar zoom" aria-label="Aumentar zoom" data-preview-tool disabled><img src="assets/icons/zoom-in.svg" alt="" /></button>
+            <span class="preview-tool-divider"></span>
+            <button type="button" id="preview-fit" class="preview-tool" title="Ajustar à tela" aria-label="Ajustar à tela" data-preview-tool disabled><img src="assets/icons/maximize.svg" alt="" /></button>
+            <button type="button" id="preview-actual-size" class="preview-tool" title="Tamanho real: 100%" aria-label="Tamanho real: 100%" data-preview-tool disabled><img src="assets/icons/scan.svg" alt="" /></button>
+          </div>
+        </div>
+        <div id="preview-viewport" tabindex="0" aria-label="Área de visualização do croqui">
+          <div id="preview-stage"><div id="preview-paper" hidden><canvas id="preview-canvas" role="img" aria-label="Imagem PNG da fachada"></canvas></div></div>
+        </div>
+        <div id="preview-state" role="status" aria-live="polite"><img id="preview-state-icon" src="assets/icons/loader-circle.svg" alt="" /><strong id="preview-state-title">Preparando seu croqui</strong><p id="preview-state-message"></p><button type="button" id="preview-retry" class="preview-secondary" hidden>Tentar novamente</button></div>
+        <footer class="preview-statusbar"><span><span class="preview-status-dot"></span><span id="preview-render-status" role="status" aria-live="polite">Preparando imagem</span></span><span id="preview-mode-label">Apresentação</span></footer>
+      </main>
+    </div>
+  </section>
   <div id="menu-popup" style="display: none"></div>
-  <div id="modal-overlay" style="display: none;">
-    <div id="modal-content">
-      <h3>Pré-visualização do Croqui</h3>
-      <div class="modal-export-options">
-        <label for="export-mode">Cotas:</label>
-        <select id="export-mode">
-          <option value="simple">Apresentação</option>
-          <option value="detailed">Detalhadas</option>
-        </select>
-      </div>
-      <div id="modal-image-container">
-      </div>
-      <div class="modal-filename-wrapper">
-        <label for="filename-input">Nome do Arquivo:</label>
-        <input type="text" id="filename-input">
-      </div>
-      <div id="modal-actions">
-        <button id="modal-cancel-btn">Cancelar</button>
-        <button id="modal-download-btn">Download</button>
-      </div>
-    </div>
-  </div>
 
   <div id="custom-modal-overlay" style="display: none;">
     <div id="custom-modal-content">
@@ -158,5 +220,6 @@
   </div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="script.js"></script>
+  <script src="preview.js"></script>
 </body>
 </html>
