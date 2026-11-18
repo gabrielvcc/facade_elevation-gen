@@ -45,6 +45,31 @@ function cmToGridSize(value) { return value + borderWidth; }
 function gridSizeToCm(value) { return Math.max(0, value - borderWidth); }
 function formatCm(value) { return `${gridSizeToCm(value)}cm`; }
 
+function getComponentBounds(row, col, cell) {
+  return { top: row - (cell.spanY || 1) + 1, bottom: row + 1, left: col, right: col + (cell.spanX || 1) };
+}
+
+function canPlaceRequadro(row, col, spanX, spanY) {
+  if (![1, 2, 3, 4].includes(spanX) || ![1, 2].includes(spanY)) return false;
+  const bounds = getComponentBounds(row, col, { spanX, spanY });
+  if (bounds.top < 0 || bounds.bottom > numRows || bounds.left < 0 || bounds.right > numCols) return false;
+  for (let r = bounds.top; r < bounds.bottom; r++) {
+    for (let c = bounds.left; c < bounds.right; c++) {
+      if (gridState[r][c]) return false;
+    }
+  }
+  return true;
+}
+
+function selectRequadroSize(spanX, spanY) {
+  const target = activeInsertMode?.type === 'requadro' && activeInsertMode.target;
+  if (!target || !canPlaceRequadro(target.row, target.col, spanX, spanY)) return false;
+  Object.assign(activeInsertMode, { spanX, spanY, error: null });
+  updateInsertModeStatus();
+  redrawAll();
+  return true;
+}
+
 function resetGridState(newRows, newCols) {
   numRows = newRows;
   numCols = newCols;
@@ -76,6 +101,7 @@ function updateGrid() {
   numCols = newCols;
   columnWidths.length = newCols;
   rowHeights.length = newRows;
+  rebuildOccupiedCells();
   redrawAll();
 }
 
@@ -91,8 +117,18 @@ function rebuildOccupiedCells() {
   for (let r = 0; r < numRows; r++) {
     for (let c = 0; c < numCols; c++) {
       const cell = gridState[r][c];
-      if (cell && cell.master && cell.type.startsWith('giro') && cell.spanY === 2 && r > 0) {
-        gridState[r - 1][c] = { occupiedBy: [r, c] };
+      if (!cell?.master) continue;
+      const bounds = getComponentBounds(r, c, cell);
+      if (bounds.top < 0 || bounds.right > numCols) {
+        gridState[r][c] = null;
+        continue;
+      }
+      for (let occupiedRow = bounds.top; occupiedRow < bounds.bottom; occupiedRow++) {
+        for (let occupiedCol = bounds.left; occupiedCol < bounds.right; occupiedCol++) {
+          if (occupiedRow !== r || occupiedCol !== c) {
+            gridState[occupiedRow][occupiedCol] = { occupiedBy: [r, c] };
+          }
+        }
       }
     }
   }
@@ -122,22 +158,11 @@ function insertRowAt(index) {
 function clearCellComponentAt(row, col) {
   const cell = gridState[row]?.[col];
   if (!cell) return;
-
-  if (cell.master) {
-    if (cell.type.startsWith('giro') && cell.spanY === 2 && row > 0) {
-      gridState[row - 1][col] = null;
-    }
-    gridState[row][col] = null;
-    return;
-  }
-
-  if (cell.occupiedBy) {
-    const [masterRow, masterCol] = cell.occupiedBy;
-    if (gridState[masterRow]?.[masterCol]) {
-      gridState[masterRow][masterCol] = null;
-    }
-    gridState[row][col] = null;
-  }
+  const [masterRow, masterCol] = cell.master ? [row, col] : cell.occupiedBy || [row, col];
+  gridState.forEach((cells, r) => cells.forEach((occupied, c) => {
+    if ((r === masterRow && c === masterCol) ||
+      (occupied?.occupiedBy?.[0] === masterRow && occupied.occupiedBy[1] === masterCol)) cells[c] = null;
+  }));
 }
 
 async function deleteColumnAt(index) {
@@ -823,7 +848,8 @@ function getComponentName(type) {
     'maxim-ar': 'Maxim-ar',
     veneziana: 'Veneziana',
     giro: 'Porta de Giro',
-    acm: 'ACM'
+    acm: 'ACM',
+    requadro: 'Requadro'
   };
   return names[type] || type;
 }
@@ -848,6 +874,7 @@ function updateInsertModeStatus() {
   const title = cornerModeActive ? 'Canto' : infinityModeActive ? 'Infinidade' : getComponentName(activeInsertMode.type);
   const canSelectScope = activeInsertMode && ['maxim-ar', 'veneziana', 'acm'].includes(activeInsertMode.type);
   const placementTarget = activeInsertMode?.target;
+  const requadroTarget = activeInsertMode?.type === 'requadro' && placementTarget;
   const scopeText = cornerModeActive
     ? 'Clique em um montante para adicionar ou remover um canto.'
     : infinityModeActive
@@ -863,18 +890,37 @@ function updateInsertModeStatus() {
       <div class="infinity-orientation" role="group" aria-label="Orientação do corte">
         <button type="button" class="infinity-orientation-option ${infinityOrientation === 'vertical' ? 'selected' : ''}" data-infinity-orientation="vertical" aria-pressed="${infinityOrientation === 'vertical'}">Vertical</button>
         <button type="button" class="infinity-orientation-option ${infinityOrientation === 'horizontal' ? 'selected' : ''}" data-infinity-orientation="horizontal" aria-pressed="${infinityOrientation === 'horizontal'}">Horizontal</button>
-      </div>` : canSelectScope ? `
+      </div>` : requadroTarget ? `
+      <div class="requadro-size-picker" role="group" aria-label="Tamanho do requadro">
+        ${[[1, 2], [2, 2], [3, 2], [4, 2], [1, 1], [2, 1], [3, 1], [4, 1]].map(([spanX, spanY]) => {
+          const available = canPlaceRequadro(placementTarget.row, placementTarget.col, spanX, spanY);
+          const selected = spanX <= activeInsertMode.spanX && spanY <= activeInsertMode.spanY;
+          const label = `${spanX} coluna${spanX > 1 ? 's' : ''} e ${spanY} linha${spanY > 1 ? 's' : ''}`;
+          return `<button type="button" class="requadro-size-cell ${selected ? 'selected' : ''}" data-requadro-x="${spanX}" data-requadro-y="${spanY}" aria-label="${label}" aria-pressed="${selected}" title="${available ? label : `${label}: sem espaço livre`}" ${available ? '' : 'disabled'}></button>`;
+        }).join('')}
+      </div>
+      <span class="requadro-size-value">${activeInsertMode.spanX} × ${activeInsertMode.spanY} módulo${activeInsertMode.spanX * activeInsertMode.spanY > 1 ? 's' : ''}</span><br>` : canSelectScope ? `
       <div class="placement-scope" role="group" aria-label="Inserir em">
         <button type="button" class="placement-scope-option ${activeInsertMode.scope === 'cell' ? 'selected' : ''}" data-placement-scope="cell" aria-pressed="${activeInsertMode.scope === 'cell'}">Quadro único</button>
         <button type="button" class="placement-scope-option ${activeInsertMode.scope === 'row' ? 'selected' : ''}" data-placement-scope="row" aria-pressed="${activeInsertMode.scope === 'row'}">Linha inteira</button>
       </div>` : '<br>'}
     ${scopeText}
+    ${activeInsertMode?.error ? `<p class="insert-mode-error" role="alert">${activeInsertMode.error}</p>` : ''}
     <div class="edit-mode-actions">
       ${cornerModeActive || infinityModeActive || placementTarget ? `<button type="button" class="edit-mode-confirm" aria-label="${placementTarget ? 'Inserir componente' : 'Finalizar'}" title="${placementTarget ? 'Inserir componente' : 'Finalizar'}">&#10003;</button>` : ''}
       <button type="button" class="edit-mode-cancel" aria-label="Cancelar" title="Cancelar">&times;</button>
     </div>
   `;
   insertModeStatus.classList.add('visible');
+  insertModeStatus.querySelectorAll('[data-requadro-x]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const spanX = Number(button.dataset.requadroX);
+      const spanY = Number(button.dataset.requadroY);
+      if (selectRequadroSize(spanX, spanY)) {
+        insertModeStatus.querySelector(`[data-requadro-x="${spanX}"][data-requadro-y="${spanY}"]`).focus({ preventScroll: true });
+      }
+    });
+  });
   insertModeStatus.querySelectorAll('[data-placement-scope]').forEach((button) => {
     button.addEventListener('click', () => {
       activeInsertMode.scope = button.dataset.placementScope;
@@ -940,6 +986,7 @@ function setInsertMode(type, scope, target = null) {
   if (cornerModeActive) finishCornerEditing();
   if (infinityModeActive) finishInfinityEditing();
   activeInsertMode = { type, scope, target };
+  if (type === 'requadro') Object.assign(activeInsertMode, { spanX: 1, spanY: 1 });
   menuPopup.style.display = "none";
   menuPopup.classList.remove('insert-mode-menu');
   updateInsertModeStatus();
@@ -971,6 +1018,25 @@ async function insertFromActiveMode(r, c) {
 
   const insertionMode = activeInsertMode;
   const { type, scope } = activeInsertMode;
+  if (type === 'requadro') {
+    if (!activeInsertMode.target) {
+      activeInsertMode.target = { row: r, col: c };
+      updateInsertModeStatus();
+      redrawAll();
+      return true;
+    }
+    const { spanX, spanY } = activeInsertMode;
+    if (!canPlaceRequadro(r, c, spanX, spanY)) {
+      activeInsertMode.error = 'O requadro precisa de quadros livres dentro da fachada.';
+      updateInsertModeStatus();
+      return true;
+    }
+    gridState[r][c] = { type: 'requadro', master: true, spanX, spanY };
+    clearInsertMode(false);
+    rebuildOccupiedCells();
+    redrawAll();
+    return true;
+  }
   if (scope === 'row') {
     if (c !== 0) {
       showCustomModal({ title: 'Selecione a coluna A', text: 'Para inserir uma linha inteira, clique em um quadro vazio da coluna A.', confirmText: 'OK' });
@@ -1031,7 +1097,27 @@ function createAddButton(r, c) {
   addBtn.innerText = "+";
   
   const target = activeInsertMode?.target;
-  if (activeInsertMode && (target
+  const requadroTarget = activeInsertMode?.type === 'requadro' && target;
+  const requadroCandidate = requadroTarget && canPlaceRequadro(target.row, target.col, c - target.col + 1, target.row - r + 1);
+  if (requadroCandidate) {
+    addBtn.classList.add('requadro-candidate');
+    addBtn.setAttribute('role', 'button');
+    addBtn.tabIndex = 0;
+    addBtn.setAttribute('aria-label', `Requadro: ${c - target.col + 1} coluna(s) e ${target.row - r + 1} linha(s)`);
+    addBtn.setAttribute('aria-pressed', String(c < target.col + activeInsertMode.spanX && r >= target.row - activeInsertMode.spanY + 1));
+    addBtn.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      if (selectRequadroSize(c - target.col + 1, target.row - r + 1)) {
+        overlay.querySelector(`.add-btn[data-row="${r}"][data-col="${c}"]`).focus({ preventScroll: true });
+      }
+    });
+  } else if (requadroTarget) {
+    addBtn.classList.add('requadro-unavailable');
+  }
+  if (activeInsertMode && (requadroTarget
+    ? r >= target.row - activeInsertMode.spanY + 1 && r <= target.row && c >= target.col && c < target.col + activeInsertMode.spanX
+    : target
     ? r === target.row && (activeInsertMode.scope === 'row' || c === target.col)
     : activeInsertMode.scope !== 'row' || c === 0)) {
     addBtn.classList.add('insert-target');
@@ -1039,7 +1125,10 @@ function createAddButton(r, c) {
 
   addBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
-    if (activeInsertMode?.target) return;
+    if (activeInsertMode?.target) {
+      if (requadroCandidate) selectRequadroSize(c - target.col + 1, target.row - r + 1);
+      return;
+    }
     if (await insertFromActiveMode(r, c)) return;
     showComponentMenu(e, r, c);
   });
@@ -1071,18 +1160,25 @@ function insertComponent(r, c, state, shouldUpdateState = true) {
   let totalHeight = height;
   const borderWidth = 2;
 
-  if (state.type.startsWith('giro') && state.spanY === 2) {
-    top = getY(r - 1); 
-    totalHeight = height + rowHeights[r-1]; 
-  }
+  const bounds = getComponentBounds(r, c, state);
+  top = getY(bounds.top);
+  width = columnWidths.slice(bounds.left, bounds.right).reduce((sum, size) => sum + size, 0);
+  totalHeight = rowHeights.slice(bounds.top, bounds.bottom).reduce((sum, size) => sum + size, 0);
   
   const comp = document.createElement("div");
   comp.className = "component-placed";
   if (type === 'acm') comp.classList.add('component-acm');
+  if (type === 'requadro') comp.classList.add('component-requadro');
   comp.style.left = `${left + borderWidth}px`; 
   comp.style.top = `${top + borderWidth}px`;
   comp.style.width = `${width - borderWidth}px`;
   comp.style.height = `${totalHeight - borderWidth}px`;
+  if (type === 'requadro') {
+    const openingTop = top + (bounds.top === 0 ? 0 : borderWidth);
+    const openingBottom = top + totalHeight + (bounds.bottom === numRows ? borderWidth : 0);
+    comp.style.top = `${openingTop}px`;
+    comp.style.height = `${openingBottom - openingTop}px`;
+  }
 
     const internalWidth = parseFloat(comp.style.width);
     const internalHeight = parseFloat(comp.style.height);
@@ -1121,10 +1217,7 @@ function insertComponent(r, c, state, shouldUpdateState = true) {
   trash.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
   trash.addEventListener("click", (e) => {
     e.stopPropagation();
-    gridState[r][c] = null;
-    if (state.type.startsWith('giro') && state.spanY === 2) {
-        gridState[r-1][c] = null;
-    }
+    clearCellComponentAt(r, c);
     redrawAll();
   });
   comp.addEventListener("dragover", (e) => e.preventDefault());
@@ -1141,13 +1234,12 @@ function insertComponent(r, c, state, shouldUpdateState = true) {
                 showCustomModal({ title: 'Aviso', text: 'Não é possível inserir o "giro" aqui. A célula superior está ocupada.', confirmText: 'OK'});
                 return;
             }
-            gridState[r][c] = null; // Limpa o estado atual
-            if (type.startsWith('giro')) { gridState[r-1][c] = null; }
+            clearCellComponentAt(r, c);
             redrawAll();
             showComponentMenu(e, r, c, true);
         } else {
+            clearCellComponentAt(r, c);
             gridState[r][c] = { type: newType, master: true };
-            if (type.startsWith('giro')) { gridState[r-1][c] = null; }
             redrawAll();
         }
     }
@@ -1200,24 +1292,31 @@ async function showComponentMenu(e, r, c) { // Adicionamos async aqui
   const svgVeneziana = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g stroke="black" stroke-width="1"><line y1="5" x2="100" y2="5" x1="0"></line><line y1="15" x2="100" y2="15" x1="0"></line><line y1="25" x2="100" y2="25" x1="0"></line><line y1="35" x2="100" y2="35" x1="0"></line><line y1="45" x2="100" y2="45" x1="0"></line><line y1="55" x2="100" y2="55" x1="0"></line><line y1="65" x2="100" y2="65" x1="0"></line><line y1="75" x2="100" y2="75" x1="0"></line><line y1="85" x2="100" y2="85" x1="0"></line><line y1="95" x2="100" y2="95" x1="0"></line></g></svg>`;
   const svgGiroIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M25 2 L75 50 L25 98" stroke="black" stroke-width="2" fill="none"/></svg>`;
   const svgAcmIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="8" y="8" width="84" height="84" fill="#d3d3d3"/><text x="50" y="56" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" fill="#6c757d">ACM</text></svg>`;
+  const svgRequadroIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M18 82V18H82V82" stroke="#6c757d" stroke-width="2" fill="none"/><path d="M18 82H82" stroke="#6c757d" stroke-width="1.5" stroke-dasharray="5 5" fill="none"/></svg>`;
   const menuOptionsHTML = `
       <div class="option" data-select="maxim-ar" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgMaximAr)}');"></div>
       <div class="option" data-select="veneziana" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgVeneziana)}');"></div>
       <div class="option" data-select="giro" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgGiroIcon)}');"></div>
       <div class="option" data-select="acm" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgAcmIcon)}');" aria-label="ACM" title="ACM"></div>
+      <div class="option" data-select="requadro" style="background-image:url('data:image/svg+xml;utf8,${encodeURIComponent(svgRequadroIcon)}');" aria-label="Requadro" title="Requadro"></div>
   `;
 
   menuPopup.innerHTML = menuOptionsHTML;
   menuPopup.style.display = "flex";
   menuPopup.style.left = `${e.clientX}px`;
   menuPopup.style.top = `${e.clientY}px`;
+  const popupBounds = menuPopup.getBoundingClientRect();
+  menuPopup.style.left = `${Math.max(8, Math.min(e.clientX, window.innerWidth - popupBounds.width - 8))}px`;
+  menuPopup.style.top = `${Math.max(8, Math.min(e.clientY, window.innerHeight - popupBounds.height - 8))}px`;
   
   menuPopup.querySelectorAll(".option").forEach((opt) => {
     opt.onclick = async (event) => { // Adicionamos async aqui
       event.stopPropagation();
       const selectedType = opt.dataset.select;
 
-      if (selectedType === 'giro') {
+      if (selectedType === 'requadro') {
+        setInsertMode('requadro', 'cell', { row: r, col: c });
+      } else if (selectedType === 'giro') {
         menuPopup.style.display = "none"; // Esconde o menu pequeno imediatamente
         setInsertMode('giro', 'cell');
         await insertFromActiveMode(r, c);
@@ -1329,6 +1428,28 @@ function drawDetailedDimensions(ctx, baseCanvas, layout) {
   );
 }
 
+function drawRequadroFrameCuts(ctx, layout, baseCanvas) {
+  ctx.save();
+  gridState.forEach((row, r) => row.forEach((cell, col) => {
+    if (!cell?.master || cell.type !== 'requadro') return;
+    const bounds = getComponentBounds(r, col, cell);
+    const left = layout.paddingLeft + getX(bounds.left) + borderWidth;
+    const right = layout.paddingLeft + getX(bounds.right);
+    const cuts = [];
+    if (bounds.top === 0) cuts.push([layout.paddingTop - layout.espacoExtra, layout.paddingTop + borderWidth]);
+    if (bounds.bottom === numRows) cuts.push([layout.paddingTop + getY(numRows), layout.paddingTop + baseCanvas.height + layout.espacoExtra]);
+    cuts.forEach(([top, bottom]) => {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(left, top, right - left, bottom - top);
+      // Close the exposed profile ends without adding a bar across the opening.
+      ctx.fillStyle = 'black';
+      ctx.fillRect(left - borderWidth, top, borderWidth, bottom - top);
+      ctx.fillRect(right, top, borderWidth, bottom - top);
+    });
+  }));
+  ctx.restore();
+}
+
 function createExportCanvas(baseCanvas, mode) {
   const finalCanvas = document.createElement('canvas');
   const ctx = finalCanvas.getContext('2d');
@@ -1355,6 +1476,8 @@ function createExportCanvas(baseCanvas, mode) {
   ctx.fillStyle = 'white';
   ctx.fillRect(layout.paddingLeft - marcoRespiro, layout.paddingTop - marcoRespiro, baseCanvas.width + (marcoRespiro * 2), baseCanvas.height + (marcoRespiro * 2));
   ctx.drawImage(baseCanvas, layout.paddingLeft, layout.paddingTop);
+
+  drawRequadroFrameCuts(ctx, layout, baseCanvas);
 
   ctx.strokeStyle = 'black';
   ctx.fillStyle = 'black';
@@ -1440,6 +1563,12 @@ document.addEventListener('click', (e) => {
   )) return;
 
   if (!activeMeasureCancel && !activeGiroCancel) {
+    if (activeInsertMode?.type === 'requadro' && activeInsertMode.target && target.closest('#grid-container')) {
+      if (target.closest('.requadro-candidate')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (cornerModeActive && target.closest('.corner-target')) return;
     if (infinityModeActive && target.closest('.infinity-selection-target')) return;
     if (activeInsertMode && target.closest('.add-btn.insert-target')) return;

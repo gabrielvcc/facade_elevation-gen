@@ -1,3 +1,33 @@
+# Notas de Atualização da Versão 1.1.2 - 18/11/2026
+
+## Novas Funcionalidades
+1. **Componente Requadro**
+   - Adicionado componente para representar um vão vazio na fachada, sem definir porta, janela ou outro preenchimento.
+   - Disponível na barra lateral e no menu `+` dos quadros, com configuração no balão superior esquerdo e confirmação antes de inserir.
+   - O quadro escolhido é a base inferior esquerda; o vão pode crescer para cima e para a direita, sempre formando um retângulo.
+   - As divisões internas são removidas, mantendo os limites do vão. Ao alcançar a base ou o topo da fachada, o trecho correspondente do marco externo também é aberto.
+   - O resultado aparece no editor e no PNG, incluindo os modos de cotas e a exportação com tamanho fixo.
+
+2. **Seleção do Requadro diretamente no desenho**
+   - Além do mini grid do balão, é possível clicar nos quadros vizinhos da base para escolher o tamanho do vão.
+   - O seletor e o destaque laranja do desenho permanecem sincronizados.
+   - A seleção troca de tamanho sem acumular áreas em formato de L.
+   - Cliques além do limite permitido são ignorados sem encerrar a seleção; clicar fora do grid continua cancelando a edição.
+   - Expansões que ultrapassem a fachada ou incluam componentes já posicionados ficam bloqueadas.
+
+## Ajustes
+2. **Ocupação e exclusão do vão**
+   - O Requadro é tratado como um único componente, mesmo quando ocupa vários módulos.
+   - Excluir o componente libera toda a área ocupada. Excluir uma linha ou coluna que atravesse o vão remove o Requadro inteiro, sem deixar quadros bloqueados.
+   - O desenho acompanha as medidas individuais das linhas e colunas e o reposicionamento da base ao inserir módulos antes dela.
+   - Adicionado `Requadro` à contagem de componentes utilizados na visualização, contando cada vão uma única vez.
+
+3. **Menu de componentes**
+   - Incluído o ícone do Requadro no padrão visual dos demais componentes.
+   - O menu `+` foi ajustado para acomodar o novo componente e permanecer dentro dos limites da tela, inclusive em dispositivos menores.
+
+---
+
 # Notas de Atualização da Versão 1.1.1 - 13/11/2026
 
 ## Novas Funcionalidades

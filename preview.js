@@ -65,7 +65,7 @@
   }
 
   function updateComponentSummary() {
-    const counts = new Map([['maxim-ar', 0], ['veneziana', 0], ['giro', 0], ['acm', 0]]);
+    const counts = new Map([['maxim-ar', 0], ['veneziana', 0], ['giro', 0], ['acm', 0], ['requadro', 0]]);
     gridState.forEach((row) => row.forEach((cell) => {
       if (!cell?.master) return;
       const type = cell.type === 'giro-esquerda' || cell.type === 'giro-direita' ? 'giro' : cell.type;
@@ -75,7 +75,8 @@
       'maxim-ar': ['Maxim-ar', 'Maxim-ar'],
       veneziana: ['Veneziana', 'Venezianas'],
       giro: ['Porta de giro', 'Portas de giro'],
-      acm: ['ACM', 'ACM']
+      acm: ['ACM', 'ACM'],
+      requadro: ['Requadro', 'Requadros']
     };
     const list = byId('preview-component-counts');
     list.replaceChildren();
