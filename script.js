@@ -45,6 +45,18 @@ function cmToGridSize(value) { return value + borderWidth; }
 function gridSizeToCm(value) { return Math.max(0, value - borderWidth); }
 function formatCm(value) { return `${gridSizeToCm(value)}cm`; }
 
+function remapCornerBoundaries(newCols, mapInterior = (boundary) => boundary) {
+  if (newCols === numCols) return;
+  const remap = (boundaries) => new Set([...boundaries].map((boundary) => {
+    if (boundary === 0) return 0;
+    if (boundary === numCols) return newCols;
+    const mapped = mapInterior(boundary);
+    return mapped > 0 && mapped < newCols ? mapped : null;
+  }).filter((boundary) => boundary !== null));
+  cornerBoundaries = remap(cornerBoundaries);
+  if (cornerEditSnapshot) cornerEditSnapshot = remap(cornerEditSnapshot);
+}
+
 function getComponentBounds(row, col, cell) {
   return { top: row - (cell.spanY || 1) + 1, bottom: row + 1, left: col, right: col + (cell.spanX || 1) };
 }
@@ -87,6 +99,7 @@ function resetGridState(newRows, newCols) {
 function updateGrid() {
   const newRows = parseInt(rowsInput.value);
   const newCols = parseInt(colsInput.value);
+  remapCornerBoundaries(newCols);
   while (gridState.length < newRows) {
     gridState.push(Array(numCols).fill(null));
     rowHeights.push(cmToGridSize(defaultModuleSizeCm));
@@ -136,7 +149,7 @@ function rebuildOccupiedCells() {
 
 function insertColumnAt(index) {
   const columnIndex = Math.max(0, Math.min(index, numCols));
-  cornerBoundaries = new Set([...cornerBoundaries].map((boundary) => boundary >= columnIndex ? boundary + 1 : boundary));
+  remapCornerBoundaries(numCols + 1, (boundary) => boundary >= columnIndex ? boundary + 1 : boundary);
   gridState.forEach((row) => row.splice(columnIndex, 0, null));
   columnWidths.splice(columnIndex, 0, cmToGridSize(defaultModuleSizeCm));
   numCols++;
@@ -181,9 +194,10 @@ async function deleteColumnAt(index) {
 
   if (!confirmed) return;
 
-  cornerBoundaries = new Set([...cornerBoundaries]
-    .filter((boundary) => boundary !== index && boundary !== index + 1)
-    .map((boundary) => boundary > index + 1 ? boundary - 1 : boundary));
+  remapCornerBoundaries(numCols - 1, (boundary) => {
+    if (boundary === index || boundary === index + 1) return null;
+    return boundary > index + 1 ? boundary - 1 : boundary;
+  });
 
   for (let r = 0; r < numRows; r++) {
     clearCellComponentAt(r, index);
@@ -626,18 +640,27 @@ function generateLines(totalWidth, totalHeight) {
   }
   let x = 0;
   for (let c = 0; c <= numCols; c++) {
-    const line = document.createElement("div");
+    const line = document.createElement(cornerModeActive ? 'button' : 'div');
+    const side = c === 0 ? 'left' : c === numCols ? 'right' : null;
+    const marked = cornerBoundaries.has(c);
     line.className = "line v-line";
     line.style.left = `${x}px`;
-    if (cornerBoundaries.has(c)) line.classList.add("corner-boundary");
-    if (cornerModeActive && c > 0 && c < numCols) {
+    if (side) line.classList.add(`corner-edge-${side}`);
+    if (marked) line.classList.add("corner-boundary");
+    if (cornerModeActive) {
       line.classList.add("corner-target");
-      line.title = `Marcar canto entre ${String.fromCharCode(64 + c)} e ${String.fromCharCode(65 + c)}`;
+      line.type = 'button';
+      line.dataset.cornerBoundary = c;
+      line.title = side === 'left' ? 'Canto na extremidade esquerda' : side === 'right'
+        ? 'Canto na extremidade direita' : `Canto entre ${String.fromCharCode(64 + c)} e ${String.fromCharCode(65 + c)}`;
+      line.setAttribute('aria-label', line.title);
+      line.setAttribute('aria-pressed', String(marked));
       line.addEventListener("click", (event) => {
         event.stopPropagation();
         if (cornerBoundaries.has(c)) cornerBoundaries.delete(c);
         else cornerBoundaries.add(c);
         redrawAll();
+        if (event.detail === 0) grid.querySelector(`[data-corner-boundary="${c}"]`).focus({ preventScroll: true });
       });
     }
     grid.appendChild(line);
@@ -761,7 +784,7 @@ function drawCornersOnExport(ctx, layout) {
   ctx.textBaseline = "middle";
 
   cornerBoundaries.forEach((boundary) => {
-    const x = layout.paddingLeft + getX(boundary);
+    const x = layout.paddingLeft + getX(boundary) + (boundary === 0 ? borderWidth : 0);
     const vTipY = layout.paddingTop - 5;
     ctx.fillText("CANTO", x, vTipY - 16);
     ctx.beginPath();
@@ -876,7 +899,7 @@ function updateInsertModeStatus() {
   const placementTarget = activeInsertMode?.target;
   const requadroTarget = activeInsertMode?.type === 'requadro' && placementTarget;
   const scopeText = cornerModeActive
-    ? 'Clique em um montante para adicionar ou remover um canto.'
+    ? 'Clique em um montante interno ou em uma extremidade para marcar ou remover um canto.'
     : infinityModeActive
       ? (infinityOrientation === 'vertical'
         ? 'Clique em um quadro da coluna esquerda ou direita para adicionar ou remover o corte.'
@@ -1364,6 +1387,13 @@ function drawDimensionLine(ctx, x1, y1, x2, y2, label, orientation, options = {}
   }
 }
 
+function getWidthDimensionBounds(baseCanvas, layout) {
+  return {
+    left: layout.paddingLeft - (cornerBoundaries.has(0) ? 0 : layout.espacoExtra),
+    right: layout.paddingLeft + baseCanvas.width + (cornerBoundaries.has(numCols) ? 0 : layout.espacoExtra)
+  };
+}
+
 function drawSimpleDimensions(ctx, baseCanvas, layout) {
   ctx.font = 'bold 18px sans-serif';
   const hX = layout.paddingLeft + baseCanvas.width + layout.cotaOffset;
@@ -1372,9 +1402,8 @@ function drawSimpleDimensions(ctx, baseCanvas, layout) {
   drawDimensionLine(ctx, hX, hYStart, hX, hYEnd, 'H', 'vertical', { bracketSize: 20, labelOffset: 15 });
 
   const lY = layout.paddingTop + baseCanvas.height + layout.cotaOffset;
-  const lXStart = layout.paddingLeft - layout.espacoExtra;
-  const lXEnd = layout.paddingLeft + baseCanvas.width + layout.espacoExtra;
-  drawDimensionLine(ctx, lXStart, lY, lXEnd, lY, 'L', 'horizontal', { bracketSize: 20, labelOffset: 20 });
+  const { left, right } = getWidthDimensionBounds(baseCanvas, layout);
+  drawDimensionLine(ctx, left, lY, right, lY, 'L', 'horizontal', { bracketSize: 20, labelOffset: 20 });
 }
 
 function drawDetailedDimensions(ctx, baseCanvas, layout) {
@@ -1406,11 +1435,12 @@ function drawDetailedDimensions(ctx, baseCanvas, layout) {
   ctx.font = 'bold 14px sans-serif';
   const totalWidthCm = columnWidths.reduce((sum, width) => sum + gridSizeToCm(width), 0);
   const totalHeightCm = rowHeights.reduce((sum, height) => sum + gridSizeToCm(height), 0);
+  const { left, right } = getWidthDimensionBounds(baseCanvas, layout);
   drawDimensionLine(
     ctx,
-    layout.paddingLeft - layout.espacoExtra,
+    left,
     layout.paddingTop + baseCanvas.height + totalOffset,
-    layout.paddingLeft + baseCanvas.width + layout.espacoExtra,
+    right,
     layout.paddingTop + baseCanvas.height + totalOffset,
     `L: ${totalWidthCm}cm`,
     'horizontal',
@@ -1433,8 +1463,10 @@ function drawRequadroFrameCuts(ctx, layout, baseCanvas) {
   gridState.forEach((row, r) => row.forEach((cell, col) => {
     if (!cell?.master || cell.type !== 'requadro') return;
     const bounds = getComponentBounds(r, col, cell);
-    const left = layout.paddingLeft + getX(bounds.left) + borderWidth;
-    const right = layout.paddingLeft + getX(bounds.right);
+    const leftProfile = borderWidth * (bounds.left === 0 && cornerBoundaries.has(0) ? 2 : 1);
+    const rightProfile = borderWidth * (bounds.right === numCols && cornerBoundaries.has(numCols) ? 2 : 1);
+    const left = layout.paddingLeft + getX(bounds.left) + leftProfile;
+    const right = layout.paddingLeft + getX(bounds.right) + borderWidth - rightProfile;
     const cuts = [];
     if (bounds.top === 0) cuts.push([layout.paddingTop - layout.espacoExtra, layout.paddingTop + borderWidth]);
     if (bounds.bottom === numRows) cuts.push([layout.paddingTop + getY(numRows), layout.paddingTop + baseCanvas.height + layout.espacoExtra]);
@@ -1443,11 +1475,32 @@ function drawRequadroFrameCuts(ctx, layout, baseCanvas) {
       ctx.fillRect(left, top, right - left, bottom - top);
       // Close the exposed profile ends without adding a bar across the opening.
       ctx.fillStyle = 'black';
-      ctx.fillRect(left - borderWidth, top, borderWidth, bottom - top);
-      ctx.fillRect(right, top, borderWidth, bottom - top);
+      ctx.fillRect(left - leftProfile, top, leftProfile, bottom - top);
+      ctx.fillRect(right, top, rightProfile, bottom - top);
     });
   }));
   ctx.restore();
+}
+
+function drawCornerFrameCuts(ctx, layout, baseCanvas) {
+  const { paddingLeft, paddingTop, espacoExtra } = layout;
+  const rightEdge = paddingLeft + baseCanvas.width;
+  const bottomEdge = paddingTop + baseCanvas.height;
+  const profileWidth = borderWidth * 2;
+
+  [0, numCols].forEach((boundary) => {
+    if (!cornerBoundaries.has(boundary)) return;
+    const isLeft = boundary === 0;
+    ctx.fillStyle = 'white';
+    ctx.fillRect(isLeft ? paddingLeft - espacoExtra : rightEdge, paddingTop - espacoExtra,
+      espacoExtra, baseCanvas.height + espacoExtra * 2);
+
+    // Join the horizontal frame ends to the corner mullion across the frame gap.
+    const profileX = isLeft ? paddingLeft : rightEdge - profileWidth;
+    ctx.fillStyle = 'black';
+    ctx.fillRect(profileX, paddingTop - espacoExtra, profileWidth, espacoExtra);
+    ctx.fillRect(profileX, bottomEdge, profileWidth, espacoExtra);
+  });
 }
 
 function createExportCanvas(baseCanvas, mode) {
@@ -1475,6 +1528,7 @@ function createExportCanvas(baseCanvas, mode) {
   ctx.fillRect(layout.paddingLeft - espacoExtra, layout.paddingTop - espacoExtra, baseCanvas.width + (espacoExtra * 2), baseCanvas.height + (espacoExtra * 2));
   ctx.fillStyle = 'white';
   ctx.fillRect(layout.paddingLeft - marcoRespiro, layout.paddingTop - marcoRespiro, baseCanvas.width + (marcoRespiro * 2), baseCanvas.height + (marcoRespiro * 2));
+  drawCornerFrameCuts(ctx, layout, baseCanvas);
   ctx.drawImage(baseCanvas, layout.paddingLeft, layout.paddingTop);
 
   drawRequadroFrameCuts(ctx, layout, baseCanvas);

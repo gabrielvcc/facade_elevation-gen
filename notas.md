@@ -1,3 +1,12 @@
+# Notas de Atualização da Versão 1.1.3 - 24/11/2026
+
+## Novas Funcionalidades
+1. **Canto nas extremidades da fachada**
+   - O componente `Canto` pode ser aplicado nos montantes externos esquerdo e direito, além dos intermediários.
+   - Os cantos externos permanecem nas respectivas extremidades ao inserir ou excluir colunas.
+
+---
+
 # Notas de Atualização da Versão 1.1.2 - 18/11/2026
 
 ## Novas Funcionalidades

@@ -818,8 +818,14 @@ body {
 .h-line { height: 2px; width: 100%; }
 .v-line { width: 2px; height: 100%; }
 .v-line.corner-boundary { width: 4px; margin-left: -1px; }
-.v-line.corner-target { cursor: pointer; width: 14px; margin-left: -6px; background: rgba(248, 153, 30, 0.24); z-index: 6; }
-.v-line.corner-target.corner-boundary { background: #000; }
+.v-line.corner-boundary.corner-edge-left { margin-left: 0; z-index: 11; }
+.v-line.corner-boundary.corner-edge-right { margin-left: -2px; z-index: 11; }
+.v-line.corner-target { padding: 0; border: 0; border-radius: 0; background: #000; cursor: pointer; z-index: 12; }
+.v-line.corner-target::after { content: ''; position: absolute; inset: 0 -6px; background: rgba(248, 153, 30, 0.24); }
+.v-line.corner-target.corner-edge-left::after { left: 0; }
+.v-line.corner-target.corner-edge-right::after { right: 0; }
+.v-line.corner-target.corner-boundary::after { background: rgba(248, 153, 30, 0.12); }
+.v-line.corner-target:hover::after, .v-line.corner-target:focus-visible::after { background: rgba(248, 153, 30, 0.42); }
 .line.infinity-target { cursor: pointer; background: rgba(248, 153, 30, 0.2); }
 .h-line.infinity-target { height: 14px; margin-top: -6px; z-index: 20; }
 .v-line.infinity-target { width: 14px; margin-left: -6px; z-index: 20; }
